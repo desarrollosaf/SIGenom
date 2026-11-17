@@ -19,7 +19,8 @@
     "migrate:undo": "sequelize-cli db:migrate:undo",
     "migrate:status": "sequelize-cli db:migrate:status",
     "seed": "sequelize-cli db:seed:all",
-    "seed:undo": "sequelize-cli db:seed:undo:all"
+    "seed:undo": "sequelize-cli db:seed:undo:all",
+    "importar:cata-pd": "node src/database/scripts/importar-cata-pd.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",

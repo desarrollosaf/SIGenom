@@ -251,7 +251,7 @@ export interface ReciboDetalle {
   cuentaBancaria: string | null;
   pagoCheque: boolean;
   observaciones: string[];
-  conceptos: { clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number }[];
+  conceptos: { clave: number; claveGem: number | null; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number }[];
 }
 
 export interface Diagnostico {

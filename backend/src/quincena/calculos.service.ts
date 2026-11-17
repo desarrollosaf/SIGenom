@@ -6,7 +6,7 @@ import { Op, Sequelize, WhereOptions } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { contiene, patron } from '../common/busqueda';
 import { COLA_CALCULOS } from '../config/conexiones';
-import { Adscripcion, Puesto } from '../database/models/catalogos.models';
+import { Adscripcion, Concepto, Puesto } from '../database/models/catalogos.models';
 import { Calculo, Periodo, Recibo, ReciboConcepto, TipoCalculo } from '../database/models/nomina.models';
 import { PeriodosService, vistaCalculo } from './periodos.service';
 
@@ -88,7 +88,10 @@ export class CalculosService {
 
   async recibo(id: number) {
     const recibo = await this.modeloRecibo.findByPk(id, {
-      include: [{ model: ReciboConcepto }, { model: Calculo, include: [Periodo] }],
+      include: [
+        { model: ReciboConcepto, include: [{ model: Concepto, attributes: ['claveIssemym'] }] },
+        { model: Calculo, include: [Periodo] },
+      ],
       order: [[{ model: ReciboConcepto, as: 'conceptos' }, 'naturaleza', 'DESC'], [{ model: ReciboConcepto, as: 'conceptos' }, 'clave', 'ASC']],
     });
     if (!recibo) throw new NotFoundException('El recibo no existe');
@@ -121,6 +124,8 @@ export class CalculosService {
       observaciones: recibo.observaciones ?? [],
       conceptos: recibo.conceptos.map((c) => ({
         clave: c.clave,
+        // Clave GEM del comprobante (Cata-pd.cve-iss).
+        claveGem: c.concepto?.claveIssemym ?? null,
         descripcion: c.descripcion,
         naturaleza: c.naturaleza,
         importe: c.importe,

@@ -67,31 +67,36 @@ const MOTIVOS = [
 ];
 
 /**
- * Claves de percepción y deducción. Cada tipo de nómina tiene las suyas, como en Cata-pd; aquí se
- * crean las mismas para Principal, Honorarios y Diputados como punto de partida.
- * [clave, abreviatura, descripción, P/D, F/E, grava ISR, factor ISSEMYM, partida, calculado]
+ * Claves de percepción y deducción con la numeración del sistema anterior (Cata-pd): percepciones
+ * debajo de 500, deducciones arriba, y el retroactivo de cada una es su clave + 100.
+ * La "clave GEM" del comprobante es Cata-pd.cve-iss y se guarda en clave_issemym.
+ *
+ * Aquí solo van las claves confirmadas en el comprobante impreso o en los programas .W/.P; el
+ * catálogo completo se carga desde Cata-pd con `npm run importar:cata-pd`.
+ * [clave, abreviatura, descripción, P/D, F/E, grava ISR, factor ISSEMYM, partida, calculado, clave GEM]
  */
 const CONCEPTOS = [
-  [1, 'SUELDO', 'Sueldo base', 'P', 'F', true, 1, '1131', 'sueldo'],
-  [2, 'COMPENS', 'Compensación', 'P', 'F', true, 0, '1341', 'compensacion'],
-  [5, 'DESPENSA', 'Despensa', 'P', 'F', true, 0, '1541', null],
-  [6, 'P.ANTIG', 'Prima de antigüedad', 'P', 'F', true, 1, '1311', null],
-  [8, 'PUNTUAL', 'Premio de puntualidad', 'P', 'E', true, 0, '1711', null],
-  [10, 'GRATIF', 'Gratificación extraordinaria', 'P', 'E', true, 0, '1321', null],
-  [15, 'AGUINALDO', 'Aguinaldo', 'P', 'E', true, 0, '1323', 'aguinaldo'],
-  [16, 'P.VACAC', 'Prima vacacional', 'P', 'E', true, 0, '1322', 'prima_vacacional'],
-  [20, 'REINTEG', 'Reintegro de descuento', 'P', 'E', false, 0, null, null],
-  [51, 'ISR', 'Impuesto sobre la renta', 'D', 'F', false, 0, '2117', 'isr'],
-  [52, 'ISSEMYM-S', 'ISSEMYM servicios de salud', 'D', 'F', false, 0, '2118', 'issemym_salud'],
-  [53, 'ISSEMYM-P', 'ISSEMYM sistema de pensiones', 'D', 'F', false, 0, '2118', 'issemym_pension'],
-  [60, 'SINDICAT', 'Cuota sindical', 'D', 'F', false, 0, '2119', null],
-  [65, 'INASIST', 'Descuento por inasistencia', 'D', 'E', false, 0, null, null],
-  [70, 'PREST-ISS', 'Préstamo ISSEMYM', 'D', 'F', false, 0, '2118', null],
-  [75, 'CAJA', 'Caja de ahorro', 'D', 'F', false, 0, '2119', null],
-  [80, 'PENSION', 'Pensión alimenticia', 'D', 'F', false, 0, '2119', null],
-  [85, 'COMEDOR', 'Servicio de comedor', 'D', 'E', false, 0, '2119', null],
-  [90, 'PREST-DIR', 'Préstamo directo', 'D', 'F', false, 0, '2119', null],
-  [91, 'APORT-PAR', 'Aportación al partido', 'D', 'F', false, 0, '2119', null],
+  // Comprobante: 001/0102, 012/0105, 014/0301, 017/0107. Cotizan ISSEMYM 001, 012 y 017 (las cuotas
+  // del comprobante salen exactas sobre esa suma); la prima de permanencia no.
+  [1, 'SUELDO BASE', 'SUELDO BASE', 'P', 'F', true, 1, '1131', 'sueldo', 102],
+  [12, 'GRATIFICACI', 'GRATIFICACION', 'P', 'F', true, 1, '1341', 'compensacion', 105],
+  [14, 'PRIMA PERM', 'PRIMA PERM SERV', 'P', 'F', true, 0, '1311', null, 301],
+  [17, 'GRAT EXTRA', 'GRATIFICACION EXTRA', 'P', 'F', true, 1, '1321', null, 107],
+  // 1CAL-A-P.W guarda la prima vacacional en la 37 y el aguinaldo en la 38.
+  [37, 'PRIMA VAC', 'PRIMA VACACIONAL', 'P', 'E', true, 0, '1322', 'prima_vacacional', null],
+  [38, 'AGUINALDO', 'AGUINALDO', 'P', 'E', true, 0, '1323', 'aguinaldo', null],
+  // Comprobante: 501/5408, 511/5541, 512/5540, 522/5414, 549/5542, 555/(sin clave GEM).
+  [501, 'ISR', 'IMPTO SOBRE LA RENTA', 'D', 'F', false, 0, '2117', 'isr', 5408],
+  // 1CAL-N-P.W: la pensión alimenticia es la 502.
+  [502, 'PENSION ALI', 'PENSION ALIMENTICIA', 'D', 'F', false, 0, '2119', null, null],
+  [511, 'FONDO SSR', 'C FONDO SIST SOL REP', 'D', 'F', false, 0, '2118', 'issemym_pension', 5541],
+  [512, 'SERV SALUD', 'C SERVICIOS DE SALUD', 'D', 'F', false, 0, '2118', 'issemym_salud', 5540],
+  [522, 'INFONACOT', 'INFONACOT', 'D', 'F', false, 0, '2119', null, 5414],
+  // COMP-ISS.W: 531 estancia ISSEMYM, 550 ahorro SCI (descripción tomada del comentario del programa).
+  [531, 'ESTANCIA', 'ESTANCIA ISSEMYM', 'D', 'F', false, 0, '2118', null, null],
+  [549, 'SCI OBLIG', 'C OBLIG SIST CAP IND', 'D', 'F', false, 0, '2118', null, 5542],
+  [550, 'AHORRO SCI', 'AHORRO SCI', 'D', 'F', false, 0, '2118', null, null],
+  [555, 'COMEDOR', 'SERVICIO DE COMEDOR', 'D', 'E', false, 0, '2119', null, null],
 ];
 
 /** @type {import('sequelize-cli').Seeder} */
@@ -125,7 +130,7 @@ module.exports = {
     for (const tipo of ['P', 'H', 'D']) {
       await queryInterface.bulkInsert(
         'conceptos',
-        CONCEPTOS.map(([clave, abreviatura, descripcion, naturaleza, periodicidad, grava_isr, factor_issemym, partida, calculado]) => ({
+        CONCEPTOS.map(([clave, abreviatura, descripcion, naturaleza, periodicidad, grava_isr, factor_issemym, partida, calculado, clave_issemym]) => ({
           tipo_nomina: tipo,
           clave,
           abreviatura,
@@ -136,6 +141,7 @@ module.exports = {
           grava_isr,
           factor_issemym: tipo === 'H' ? 0 : factor_issemym,
           partida,
+          clave_issemym,
           calculado,
           activo: !(tipo === 'H' && String(calculado).startsWith('issemym')),
           ...t,

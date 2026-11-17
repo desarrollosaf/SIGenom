@@ -1,0 +1,26 @@
+/* EXPORTA-CATA-PD.P
+   Exporta el catalogo de percepciones y deducciones (Cata-pd) de la base PERSONA
+   a un CSV para cargarlo en SIGenom con:  npm run importar:cata-pd -- cata-pd.csv
+   Correr desde el editor de Progress conectado a PERSONA.  */
+
+OUTPUT TO "C:\cata-pd.csv".
+PUT UNFORMATTED
+    "tipo,cves,cve-desc,cve-des-l,per-ded,fija-even,g-ispt,g-issem,g-med,ded-iss,part,cve-iss,des-pro" SKIP.
+FOR EACH Cata-pd NO-LOCK BY Cata-pd.tipo BY Cata-pd.cves:
+    EXPORT DELIMITER ","
+        Cata-pd.tipo
+        Cata-pd.cves
+        Cata-pd.cve-desc
+        Cata-pd.cve-des-l
+        Cata-pd.per-ded
+        Cata-pd.fija-even
+        Cata-pd.g-ispt
+        Cata-pd.g-issem
+        Cata-pd.g-med
+        Cata-pd.ded-iss
+        Cata-pd.part
+        Cata-pd.cve-iss
+        Cata-pd.des-pro.
+END.
+OUTPUT CLOSE.
+MESSAGE "Listo: C:\cata-pd.csv" VIEW-AS ALERT-BOX INFORMATION.

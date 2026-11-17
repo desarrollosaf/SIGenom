@@ -146,18 +146,18 @@ module.exports = {
     const cuentas = [];
     filas.forEach((e, i) => {
       const tipo = e.tipo_nomina;
-      if (tipo !== 'H') fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 5), importe: 750 });
-      if (tipo === 'P' && i % 3 === 0) fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 6), importe: 120 + (i % 7) * 40 });
-      if (e.sindicalizado) fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 60), importe: 85 });
-      if (tipo === 'P' && i % 5 === 0) fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 70), importe: 450 + (i % 4) * 150 });
-      if (tipo === 'P' && i % 4 === 0) plazos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 75), importe_quincenal: 300, quincenas_pendientes: 12 + (i % 10), activo: true });
-      if (i === 15 || i === 47) plazos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 80), importe_quincenal: 0, porcentaje: 25, beneficiario: 'Beneficiaria de ejemplo', activo: true });
+      // Claves del sistema anterior: 014 prima de permanencia, 017 gratificación extra, 502 pensión
+      // alimenticia, 522 INFONACOT, 531 estancia ISSEMYM, 550 ahorro SCI.
+      if (tipo !== 'H') fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 17), importe: 750 });
+      if (tipo === 'P' && i % 3 === 0) fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 14), importe: 120 + (i % 7) * 40 });
+      if (tipo === 'P' && i % 5 === 0) fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 531), importe: 450 + (i % 4) * 150 });
+      if (tipo === 'P' && i % 4 === 0) plazos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 522), importe_quincenal: 300, quincenas_pendientes: 12 + (i % 10), activo: true });
+      if (i === 15 || i === 47) plazos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 502), importe_quincenal: 0, porcentaje: 25, beneficiario: 'Beneficiaria de ejemplo', activo: true });
       if (tipo === 'P' && i % 11 === 0) {
-        fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 90), importe: 500 });
+        fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 550), importe: 500 });
         // Uno sin su cuenta contable, para el diagnóstico de préstamos y aportaciones.
-        if (i !== 22) cuentas.push({ empleado_id: e.id, concepto_id: concepto(tipo, 90), partida: '211900000' + (i % 9) });
+        if (i !== 22) cuentas.push({ empleado_id: e.id, concepto_id: concepto(tipo, 550), partida: '211900000' + (i % 9) });
       }
-      if (tipo === 'D') fijos.push({ empleado_id: e.id, concepto_id: concepto(tipo, 91), importe: 2500 });
     });
     await queryInterface.bulkInsert('empleado_conceptos', fijos.map((f) => ({ ...f, ...t })));
     await queryInterface.bulkInsert('descuentos_plazo', plazos.map((p) => ({ porcentaje: null, beneficiario: null, ...p, ...t })));
@@ -185,15 +185,13 @@ module.exports = {
     const principal = filas.filter((e) => e.tipo_nomina === 'P');
     const capturas = [];
     principal.slice(0, 40).forEach((e, i) => {
-      if (i % 2 === 0) capturas.push({ empleado_id: e.id, concepto_id: concepto('P', 8), importe: 350, origen: 'inasistencias', referencia: 'Premio de puntualidad' });
-      if (i % 7 === 0) capturas.push({ empleado_id: e.id, concepto_id: concepto('P', 65), importe: 280 + i * 3, origen: 'inasistencias', referencia: 'Faltas' });
-      if (i % 9 === 0) capturas.push({ empleado_id: e.id, concepto_id: concepto('P', 85), importe: 210, origen: 'comedor', referencia: null });
+      if (i % 9 === 0) capturas.push({ empleado_id: e.id, concepto_id: concepto('P', 555), importe: 210, origen: 'comedor', referencia: null });
     });
     // Una captura a un empleado de baja: otro caso para Verificación.
     const baja = principal[120];
     await queryInterface.sequelize.query(`UPDATE empleados SET estado = 'baja', fecha_baja = '${anio - 1}-12-31' WHERE id = ${baja.id}`);
     await queryInterface.bulkInsert('movimientos_personal', [{ empleado_id: baja.id, tipo: 'baja', motivo_clave: 'B01', fecha_inicio: `${anio - 1}-12-31`, registrado_por: 'SEED', cancelado: false, ...t }]);
-    capturas.push({ empleado_id: baja.id, concepto_id: concepto('P', 10), importe: 1500, origen: 'captura', referencia: null });
+    capturas.push({ empleado_id: baja.id, concepto_id: concepto('P', 17), importe: 1500, origen: 'captura', referencia: null });
     await queryInterface.bulkInsert('capturas', capturas.map((c) => ({ periodo_id: periodo.id, registrado_por: 'SEED', ...c, ...t })));
   },
 

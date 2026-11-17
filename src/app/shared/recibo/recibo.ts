@@ -41,11 +41,12 @@ import { Icono } from '../icono/icono';
                 @for (c of porNaturaleza()[lado.clave]; track c.clave) {
                   <tr>
                     <td class="min mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
+                    <td class="min mono tenue" title="Clave GEM">{{ c.claveGem ? c.claveGem.toString().padStart(4, '0') : '····' }}</td>
                     <td>{{ c.descripcion }}</td>
                     <td class="der cifra">{{ c.importe | moneda }}</td>
                   </tr>
                 } @empty {
-                  <tr><td class="tenue" colspan="3">Sin conceptos</td></tr>
+                  <tr><td class="tenue" colspan="4">Sin conceptos</td></tr>
                 }
               </tbody>
             </table>

@@ -79,7 +79,8 @@ export class ReciboPdfService {
       doc.moveTo(cx, cy - 4).lineTo(cx + mitad, cy - 4).strokeColor(LINEA).lineWidth(0.8).stroke();
       for (const c of r.conceptos.filter((k) => k.naturaleza === naturaleza)) {
         doc.font('Helvetica').fillColor(APAGADO).fontSize(8).text(String(c.clave).padStart(3, '0'), cx, cy, { width: 24 });
-        doc.fillColor(TINTA).fontSize(9).text(c.descripcion, cx + 26, cy, { width: mitad - 120, height: 11, ellipsis: true });
+        doc.text(c.claveGem ? String(c.claveGem).padStart(4, '0') : '....', cx + 24, cy, { width: 28 });
+        doc.fillColor(TINTA).fontSize(9).text(c.descripcion, cx + 54, cy, { width: mitad - 148, height: 11, ellipsis: true });
         doc.text(MONEDA.format(c.importe), cx + mitad - 90, cy, { width: 90, align: 'right' });
         cy += 15;
       }

@@ -213,6 +213,9 @@ export class ReciboConcepto extends Model {
   @Column(DataType.INTEGER)
   declare conceptoId: number;
 
+  @BelongsTo(() => Concepto)
+  declare concepto: Concepto | null;
+
   @Column(DataType.SMALLINT)
   declare clave: number;
 
