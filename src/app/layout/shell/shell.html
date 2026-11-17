@@ -1,0 +1,105 @@
+<aside class="lateral" [class.abierta]="menuAbierto()">
+  <a class="marca" routerLink="/inicio">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="8" fill="currentColor" /><path d="M9 21.5c1.4 1.3 3.6 2 6.2 2 3.9 0 6.3-1.7 6.3-4.4 0-2.4-1.7-3.6-5.4-4.3-2.5-.5-3.3-1-3.3-2 0-1 1-1.7 2.8-1.7 1.7 0 3.1.5 4.2 1.4" fill="none" stroke="var(--superficie)" stroke-width="2.4" stroke-linecap="round" /></svg>
+    </span>
+    <span>
+      <strong>SIGenom</strong>
+      <small>Nómina · Poder Legislativo</small>
+    </span>
+  </a>
+
+  <nav aria-label="Principal">
+    @for (grupo of grupos(); track $index) {
+      <div class="grupo">
+        @if (grupo.titulo) {
+          <p class="antetitulo">{{ grupo.titulo }}</p>
+        }
+        @for (entrada of grupo.entradas; track entrada.ruta) {
+          <a class="entrada" [routerLink]="entrada.ruta" routerLinkActive="activa">
+            <app-icono [nombre]="entrada.icono" [tamano]="17" />
+            <span>{{ entrada.etiqueta }}</span>
+          </a>
+        }
+      </div>
+    }
+  </nav>
+
+  <div class="pie-lateral">
+    <div class="cuenta-caja">
+      <button type="button" class="cuenta" (click)="cuentaAbierta.set(!cuentaAbierta())" [attr.aria-expanded]="cuentaAbierta()">
+        <span class="avatar">{{ iniciales() }}</span>
+        <span class="quien">
+          <strong>{{ auth.currentUser()?.nombre }}</strong>
+          <small>{{ auth.currentUser()?.usuario }} · {{ auth.currentUser()?.rol }}</small>
+        </span>
+        <app-icono nombre="abajo" [tamano]="14" />
+      </button>
+      @if (cuentaAbierta()) {
+        <div class="menu-cuenta">
+          <a routerLink="/mi-cuenta"><app-icono nombre="candado" [tamano]="16" />Cambiar contraseña</a>
+          <button type="button" (click)="tema.alternar()">
+            <app-icono [nombre]="tema.oscuro() ? 'sol' : 'luna'" [tamano]="16" />
+            {{ tema.oscuro() ? 'Tema claro' : 'Tema oscuro' }}
+          </button>
+          <button type="button" (click)="salir()"><app-icono nombre="salir" [tamano]="16" />Cerrar sesión</button>
+        </div>
+      }
+    </div>
+  </div>
+</aside>
+
+@if (menuAbierto()) {
+  <div class="velo" (click)="menuAbierto.set(false)" aria-hidden="true"></div>
+}
+
+<div class="area">
+  <header class="barra-superior">
+    <button type="button" class="boton-icono solo-movil" (click)="menuAbierto.set(true)" aria-label="Abrir menú">
+      <app-icono nombre="menu" />
+    </button>
+
+    <!-- Contexto: qué nómina y qué quincena. Todas las pantallas trabajan sobre esto. -->
+    <div class="contexto">
+      <label class="selector">
+        <span class="sr">Tipo de nómina</span>
+        <select [value]="contexto.tipoNomina()" (change)="contexto.elegir($any($event.target).value)">
+          @for (t of contexto.opciones()?.tiposNomina ?? []; track t.clave) {
+            <option [value]="t.clave" [selected]="t.clave === contexto.tipoNomina()">{{ t.nombre }}</option>
+          }
+        </select>
+        <app-icono nombre="abajo" [tamano]="14" />
+      </label>
+      @if (contexto.periodo(); as p) {
+        <a class="periodo" routerLink="/quincenas">
+          <span class="mono">Q{{ p.quincena.toString().padStart(2, '0') }}</span>
+          <span class="texto-periodo">{{ p.nombre }}</span>
+          <span
+            class="insignia"
+            [class.verde]="p.estado === 'nomina'"
+            [class.azul]="p.estado === 'prenomina'"
+            [class.ambar]="p.estado === 'captura'"
+            >{{ estados[p.estado] }}</span
+          >
+        </a>
+      } @else if (!contexto.cargando()) {
+        <a class="periodo" routerLink="/quincenas"><span class="insignia ambar">Sin quincena abierta</span></a>
+      }
+    </div>
+
+    <div class="buscador">
+      <app-buscar-empleado [tipoNomina]="contexto.tipoNomina()" [todos]="true" marcador="Buscar empleado…" (elegido)="irA($event)" />
+    </div>
+  </header>
+
+  <main>
+    <router-outlet />
+  </main>
+</div>
+
+@if (inactividad.showWarning()) {
+  <div class="inactividad" role="alert">
+    <span>Tu sesión se cerrará en {{ inactividad.secondsRemaining() }} s por inactividad.</span>
+    <button type="button" class="boton chico" (click)="inactividad.staySignedIn()">Seguir aquí</button>
+  </div>
+}

@@ -1,0 +1,436 @@
+<div class="pagina">
+  <a class="boton fantasma chico" routerLink="/empleados"><app-icono nombre="atras" [tamano]="15" />Empleados</a>
+
+  @if (ficha(); as f) {
+    <header class="encabezado cabeza-ficha">
+      <div class="identidad">
+        <span class="avatar-grande">{{ f.apellidoPaterno[0] }}{{ f.nombres[0] }}</span>
+        <div>
+          <h1 class="titulo">{{ f.nombre }}</h1>
+          <p class="mono apagado chico">{{ f.curp }} · {{ f.rfc }}</p>
+          <div class="acciones etiquetas">
+            <span class="insignia" [class.verde]="f.estado === 'activo'" [class.ambar]="f.estado === 'permiso'" [class.rojo]="f.estado === 'baja'">{{ f.estado }}</span>
+            <span class="insignia sin-punto">{{ f.puesto }}</span>
+            <span class="insignia sin-punto mono">Nivel {{ f.nivel }}-{{ f.rango }}</span>
+            @if (f.sindicalizado) {<span class="insignia sin-punto">Sindicalizado</span>}
+          </div>
+        </div>
+      </div>
+      @if (puede()) {
+        <div class="acciones">
+          <button type="button" class="boton" (click)="abrirEdicion()"><app-icono nombre="editar" [tamano]="15" />Editar</button>
+          @if (f.estado === 'activo') {
+            <button type="button" class="boton" (click)="abrirMovimiento('permiso')">Permiso</button>
+            <button type="button" class="boton peligro" (click)="abrirMovimiento('baja')">Baja</button>
+          } @else {
+            <button type="button" class="boton primario" (click)="abrirMovimiento('reingreso')">Reingreso</button>
+          }
+        </div>
+      }
+    </header>
+
+    <nav class="pestanas" aria-label="Secciones de la ficha">
+      @for (p of pestanas; track p.clave) {
+        <button type="button" [class.activa]="pestana() === p.clave" (click)="pestana.set(p.clave)">{{ p.titulo }}</button>
+      }
+    </nav>
+
+    @switch (pestana()) {
+      @case ('general') {
+        <div class="cifras">
+          <div class="cifra-bloque">
+            <span class="antetitulo">Sueldo mensual</span>
+            <span class="valor">{{ f.tabulador?.sueldoMensual ?? null | moneda }}</span>
+            @if (!f.tabulador) {<p class="nota negativo">Nivel fuera del tabulador</p>}
+          </div>
+          <div class="cifra-bloque">
+            <span class="antetitulo">Compensación mensual</span>
+            <span class="valor">{{ f.tabulador?.compensacionMensual ?? null | moneda }}</span>
+          </div>
+          <div class="cifra-bloque">
+            <span class="antetitulo">Bruto quincenal del tabulador</span>
+            <span class="valor">{{ sueldoQuincenal() | moneda }}</span>
+          </div>
+          <div class="cifra-bloque">
+            <span class="antetitulo">Último neto</span>
+            <span class="valor">{{ f.recibos[0]?.neto ?? null | moneda }}</span>
+            @if (f.recibos[0]; as r) {<p class="nota">{{ nombresCalculo[r.tipo] }} Q{{ r.quincena }}/{{ r.anio }}</p>}
+          </div>
+        </div>
+
+        <section class="tarjeta con-relleno seccion">
+          <dl class="datos">
+            <div><dt>Adscripción</dt><dd>{{ f.adscripcionId }} · {{ f.adscripcion }}</dd></div>
+            <div><dt>Puesto</dt><dd>{{ f.puestoClave }} · {{ f.puesto }}</dd></div>
+            <div><dt>Fecha de alta</dt><dd>{{ f.fechaAlta | fecha }}</dd></div>
+            <div><dt>Ingreso al gobierno</dt><dd>{{ f.fechaIngresoGobierno | fecha }}</dd></div>
+            @if (f.fechaBaja) {<div><dt>Fecha de baja</dt><dd>{{ f.fechaBaja | fecha }}</dd></div>}
+            <div><dt>Número ISSEMYM</dt><dd class="mono">{{ f.numeroIssemym ?? '—' }}</dd></div>
+            <div><dt>Aporta al S.C.I.</dt><dd>{{ f.sci ? 'Sí' : 'No' }}</dd></div>
+            <div><dt>Nacimiento</dt><dd>{{ f.fechaNacimiento | fecha }}</dd></div>
+            <div><dt>C.P. fiscal</dt><dd class="mono">{{ f.codigoPostalFiscal ?? '—' }}</dd></div>
+            <div><dt>Forma de pago</dt><dd>{{ f.pagoCheque ? 'Cheque' : f.cuentaBancaria ? (f.banco ?? 'Banco') + ' · ' + f.cuentaBancaria : 'Sin cuenta' }}</dd></div>
+          </dl>
+          @if (puede()) {
+            <hr class="separador" />
+            <button type="button" class="boton fantasma chico" (click)="nuevaCurp = f.curp; cajon.set('curp')">Corregir CURP</button>
+          }
+        </section>
+      }
+
+      @case ('conceptos') {
+        @if (quincena(); as q) {
+          <div class="cabeza-seccion" style="margin-bottom: 10px">
+            <div>
+              <h2 class="titulo-chico">Su quincena completa</h2>
+              <p class="apagado chico">{{ q.periodo.nombre }} · {{ q.dias }} días pagados · estimación con el mismo cálculo de la nómina, antes de calcularla.</p>
+            </div>
+            <a class="boton chico" routerLink="/captura">Capturar algo de esta quincena</a>
+          </div>
+          @for (o of q.observaciones; track o) {<p class="nota ambar chico" style="margin-bottom: 8px">{{ o }}</p>}
+          <div class="tabla-marco">
+            <table class="tabla">
+              <thead><tr><th class="min">Clave</th><th>Concepto</th><th>De dónde sale</th><th class="der">Percepción</th><th class="der">Deducción</th></tr></thead>
+              <tbody>
+                @for (l of q.lineas; track l.conceptoId) {
+                  <tr>
+                    <td class="mono tenue">{{ l.clave.toString().padStart(3, '0') }}</td>
+                    <td>{{ l.descripcion }}</td>
+                    <td>
+                      @for (o of l.origenes; track o) {
+                        <span class="insignia sin-punto origen" [class.azul]="o === 'calculado'" [class.ambar]="o === 'captura'" [class.verde]="o === 'fija' || o === 'plazo'">{{ nombresOrigen[o] }}</span>
+                      }
+                    </td>
+                    <td class="der cifra">{{ l.naturaleza === 'P' ? (l.importe | moneda) : '' }}</td>
+                    <td class="der cifra negativo">{{ l.naturaleza === 'D' ? (l.importe | moneda) : '' }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr><td colspan="3">Totales</td><td class="der cifra">{{ q.totalPercepciones | moneda }}</td><td class="der cifra">{{ q.totalDeducciones | moneda }}</td></tr>
+                <tr><td colspan="3">Neto estimado</td><td class="der cifra" colspan="2" style="color: var(--acento); font-size: 1rem">{{ q.neto | moneda }}</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <p class="tenue chico" style="margin-top: 8px">
+            Base ISR {{ q.baseIsr | moneda }} · ISR causado {{ q.isrCausado | moneda }} · subsidio {{ q.subsidio | moneda }} · base ISSEMYM {{ q.baseIssemym | moneda }}.
+            El sueldo y la compensación salen del tabulador (nivel {{ f.nivel }}, rango {{ f.rango }}).
+          </p>
+        }
+
+        <h2 class="titulo-chico" style="margin: 28px 0 4px">Claves fijas</h2>
+        <p class="apagado chico" style="margin-bottom: 12px">
+          Las que se repiten cada quincena hasta quitarlas. Lo que solo toca una quincena (una gratificación, faltas, comedor) va en Captura.
+        </p>
+        <div class="tabla-marco">
+          <table class="tabla">
+            <thead><tr><th class="min">Clave</th><th>Concepto</th><th>Tipo</th><th class="der">Importe quincenal</th><th class="min"></th></tr></thead>
+            <tbody>
+              @for (c of f.fijos; track c.id) {
+                <tr>
+                  <td class="mono tenue">{{ c.concepto.clave.toString().padStart(3, '0') }}</td>
+                  <td>{{ c.concepto.nombre }}</td>
+                  <td><span class="insignia sin-punto" [class.verde]="c.concepto.naturaleza === 'P'" [class.rojo]="c.concepto.naturaleza === 'D'">{{ c.concepto.naturaleza === 'P' ? 'Percepción' : 'Deducción' }}</span></td>
+                  <td class="der">
+                    @if (puede()) {
+                      <input class="campo cifra importe" type="number" step="0.01" [value]="c.importe" (change)="cambiarFijo(c.concepto.id, $any($event.target).value, c.importe)" [attr.aria-label]="'Importe de ' + c.concepto.nombre" />
+                    } @else {
+                      <span class="cifra">{{ c.importe | moneda }}</span>
+                    }
+                  </td>
+                  <td>
+                    @if (puede()) {
+                      <button type="button" class="boton-icono" (click)="quitarFijo(c.concepto.id, c.concepto.nombre)" aria-label="Quitar"><app-icono nombre="basura" [tamano]="16" /></button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="tenue">Sin percepciones ni deducciones fijas.</td></tr>
+              }
+            </tbody>
+            @if (puede()) {
+              <tfoot>
+                <tr>
+                  <td colspan="3">
+                    <select class="campo" [(ngModel)]="nuevoFijo.conceptoId" aria-label="Concepto a asignar">
+                      <option [ngValue]="null">Asignar otro concepto…</option>
+                      @for (c of conceptos(); track c.id) {
+                        <option [ngValue]="c.id">{{ c.clave }} · {{ c.nombre }} ({{ c.naturaleza === 'P' ? 'percepción' : 'deducción' }})</option>
+                      }
+                    </select>
+                  </td>
+                  <td class="der"><input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevoFijo.importe" aria-label="Importe" /></td>
+                  <td><button type="button" class="boton chico primario" [disabled]="!nuevoFijo.conceptoId || !nuevoFijo.importe || guardando()" (click)="agregarFijo()">Agregar</button></td>
+                </tr>
+              </tfoot>
+            }
+          </table>
+        </div>
+      }
+
+      @case ('descuentos') {
+        <div class="cabeza-seccion" style="margin-bottom: 12px">
+          <p class="apagado chico">Préstamos, caja de ahorro y pensiones alimenticias. Cada cierre de quincena descuenta una de las pendientes.</p>
+          @if (puede()) {<button type="button" class="boton chico" (click)="abrirDescuento()"><app-icono nombre="mas" [tamano]="15" />Nuevo descuento</button>}
+        </div>
+        <div class="tabla-marco">
+          <table class="tabla">
+            <thead><tr><th>Concepto</th><th class="der">Importe</th><th class="der">Quincenas pendientes</th><th>Beneficiario</th><th>Estado</th></tr></thead>
+            <tbody>
+              @for (d of f.descuentosPlazo; track d.id) {
+                <tr [class.clic]="puede()" (click)="puede() && abrirDescuento(d)">
+                  <td><span class="principal">{{ d.concepto.nombre }}</span><span class="sub">Clave {{ d.concepto.clave }}</span></td>
+                  <td class="der cifra">{{ d.porcentaje ? d.porcentaje + ' % del neto' : (d.importeQuincenal | moneda) }}</td>
+                  <td class="der mono">{{ d.quincenasPendientes ?? 'Indefinido' }}</td>
+                  <td>{{ d.beneficiario ?? '—' }}</td>
+                  <td><span class="insignia" [class.verde]="d.activo">{{ d.activo ? 'Vigente' : 'Terminado' }}</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="tenue">Sin descuentos a plazo.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      @case ('cuentas') {
+        <div class="dos-col">
+          <section class="tarjeta con-relleno">
+            <h2 class="titulo-chico">Cuenta bancaria</h2>
+            <dl class="datos" style="margin-top: 12px">
+              <div><dt>Banco</dt><dd>{{ f.banco ?? '—' }}</dd></div>
+              <div><dt>Cuenta</dt><dd class="mono">{{ f.cuentaBancaria ?? '—' }}</dd></div>
+              <div><dt>Pago</dt><dd>{{ f.pagoCheque ? 'Cheque' : 'Transferencia' }}</dd></div>
+            </dl>
+            <hr class="separador" />
+            <h3 class="titulo-chico">Sucursal (cuentas que no son de Pagomático)</h3>
+            <div class="acciones" style="margin-top: 10px">
+              <input class="campo mono corto" type="number" placeholder="Sucursal" [(ngModel)]="sucursal.sucursal" [disabled]="!puede()" aria-label="Sucursal" />
+              <select class="campo corto" [(ngModel)]="sucursal.tipo" [disabled]="!puede()" aria-label="Tipo">
+                <option value="E">Empleado</option>
+                <option value="D">Diputado</option>
+              </select>
+              @if (puede()) {<button type="button" class="boton chico" (click)="guardarSucursal()">Guardar</button>}
+            </div>
+          </section>
+
+          <section class="tarjeta con-relleno">
+            <h2 class="titulo-chico">Cuentas contables de préstamos y aportaciones</h2>
+            <p class="apagado chico">Para la póliza: a qué cuenta del acreedor va cada descuento.</p>
+            <table class="tabla" style="margin-top: 10px">
+              <tbody>
+                @for (c of f.cuentasContables; track c.id) {
+                  <tr>
+                    <td>{{ c.concepto.clave }} · {{ c.concepto.nombre }}</td>
+                    <td class="mono">{{ c.partida }}</td>
+                    <td class="min">@if (puede()) {<button type="button" class="boton-icono" (click)="quitarCuenta(c.id)" aria-label="Quitar"><app-icono nombre="basura" [tamano]="16" /></button>}</td>
+                  </tr>
+                } @empty {
+                  <tr><td class="tenue" colspan="3">Sin cuentas contables.</td></tr>
+                }
+              </tbody>
+            </table>
+            @if (puede()) {
+              <div class="acciones" style="margin-top: 10px">
+                <select class="campo" [(ngModel)]="nuevaCuenta.conceptoId" aria-label="Deducción">
+                  <option [ngValue]="null">Deducción…</option>
+                  @for (c of deducciones(); track c.id) {<option [ngValue]="c.id">{{ c.clave }} · {{ c.nombre }}</option>}
+                </select>
+                <input class="campo mono corto" placeholder="Partida" [(ngModel)]="nuevaCuenta.partida" aria-label="Partida" />
+                <button type="button" class="boton chico" [disabled]="!nuevaCuenta.conceptoId || !nuevaCuenta.partida" (click)="guardarCuenta()">Agregar</button>
+              </div>
+            }
+          </section>
+        </div>
+      }
+
+      @case ('movimientos') {
+        <ol class="linea-tiempo">
+          @for (m of f.movimientos; track m.id) {
+            <li [class.cancelado]="m.cancelado">
+              <span class="punto" [class]="m.tipo"></span>
+              <div class="evento">
+                <div class="cabeza-seccion">
+                  <strong>{{ nombresMovimiento[m.tipo] }}{{ m.motivo ? ' · ' + m.motivo : '' }}</strong>
+                  <span class="mono tenue chico">{{ m.fechaInicio | fecha }}{{ m.fechaFin ? ' → ' + (m.fechaFin | fecha) : '' }}</span>
+                </div>
+                @if (m.detalle) {<p class="apagado chico">{{ detalle(m.detalle) }}</p>}
+                @if (m.observaciones) {<p class="apagado chico">{{ m.observaciones }}</p>}
+                <p class="tenue chico">
+                  Registró {{ m.registradoPor }}
+                  @if (m.cancelado) { · <span class="negativo">cancelado</span> }
+                  @else if (puede() && (m.tipo === 'baja' || m.tipo === 'permiso')) {
+                    · <button type="button" class="enlace" (click)="cancelarMovimiento(m.id, m.tipo)">Cancelar {{ m.tipo }}</button>
+                  }
+                </p>
+              </div>
+            </li>
+          }
+        </ol>
+      }
+
+      @case ('recibos') {
+        <div class="tabla-marco">
+          <table class="tabla">
+            <thead><tr><th>Quincena</th><th>Tipo</th><th class="der">Percepciones</th><th class="der">Deducciones</th><th class="der">Neto</th></tr></thead>
+            <tbody>
+              @for (r of f.recibos; track r.id) {
+                <tr class="clic" (click)="verRecibo(r.id)">
+                  <td class="mono">Q{{ r.quincena.toString().padStart(2, '0') }}/{{ r.anio }}</td>
+                  <td>{{ nombresCalculo[r.tipo] }}</td>
+                  <td class="der cifra">{{ r.totalPercepciones | moneda }}</td>
+                  <td class="der cifra">{{ r.totalDeducciones | moneda }}</td>
+                  <td class="der cifra principal">{{ r.neto | moneda }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="tenue">Todavía no tiene recibos calculados.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      @case ('personales') {
+        <section class="tarjeta con-relleno">
+          @if (f.datosPersonales; as d) {
+            <dl class="datos">
+              <div><dt>Sexo</dt><dd>{{ d.sexo === 'M' ? 'Mujer' : d.sexo === 'H' ? 'Hombre' : '—' }}</dd></div>
+              <div><dt>Estado civil</dt><dd>{{ d.estadoCivil ?? '—' }}</dd></div>
+              <div><dt>Correo</dt><dd>{{ d.correo ?? '—' }}</dd></div>
+              <div><dt>Teléfono</dt><dd>{{ d.telefono ?? '—' }}</dd></div>
+              <div><dt>Domicilio</dt><dd>{{ d.domicilio ?? '—' }}</dd></div>
+              <div><dt>Colonia</dt><dd>{{ d.colonia ?? '—' }}</dd></div>
+              <div><dt>C.P.</dt><dd class="mono">{{ d.codigoPostal ?? '—' }}</dd></div>
+              <div><dt>Entidad</dt><dd>{{ d.entidad ?? '—' }}</dd></div>
+              <div><dt>Profesión</dt><dd>{{ d.profesion ?? '—' }}</dd></div>
+            </dl>
+            @if (d.observaciones) {<hr class="separador" /><p class="apagado">{{ d.observaciones }}</p>}
+          } @else {
+            <p class="tenue">Sin datos personales.</p>
+          }
+        </section>
+      }
+    }
+
+    <!-- Cajones -->
+    <app-cajon [abierto]="cajon() === 'editar'" titulo="Editar empleado" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
+      <div class="formulario">
+        <div><label class="etiqueta">RFC</label><input class="campo mono" [(ngModel)]="edicion['rfc']" /></div>
+        <div><label class="etiqueta">Apellido paterno</label><input class="campo" [(ngModel)]="edicion['apellidoPaterno']" /></div>
+        <div><label class="etiqueta">Apellido materno</label><input class="campo" [(ngModel)]="edicion['apellidoMaterno']" /></div>
+        <div><label class="etiqueta">Nombre(s)</label><input class="campo" [(ngModel)]="edicion['nombres']" /></div>
+        <div class="ancho">
+          <label class="etiqueta">Adscripción</label>
+          <select class="campo" [(ngModel)]="edicion['adscripcionId']">
+            @for (a of contexto.opciones()?.adscripciones ?? []; track a.id) {<option [ngValue]="a.id">{{ a.id }} · {{ a.nombre }}</option>}
+          </select>
+        </div>
+        <div class="ancho">
+          <label class="etiqueta">Puesto</label>
+          <select class="campo" [(ngModel)]="edicion['puestoClave']">
+            @for (p of contexto.opciones()?.puestos ?? []; track p.clave) {<option [value]="p.clave">{{ p.nombre }}</option>}
+          </select>
+        </div>
+        <div><label class="etiqueta">Nivel</label><input class="campo cifra" type="number" [(ngModel)]="edicion['nivel']" /></div>
+        <div><label class="etiqueta">Rango</label><input class="campo cifra" type="number" [(ngModel)]="edicion['rango']" /></div>
+        <div><label class="etiqueta">Número ISSEMYM</label><input class="campo mono" type="number" [(ngModel)]="edicion['numeroIssemym']" /></div>
+        <div><label class="etiqueta">C.P. fiscal</label><input class="campo mono" maxlength="5" [(ngModel)]="edicion['codigoPostalFiscal']" /></div>
+        <div><label class="etiqueta">Nacimiento</label><input class="campo" type="date" [(ngModel)]="edicion['fechaNacimiento']" /></div>
+        <div><label class="etiqueta">Ingreso al gobierno</label><input class="campo" type="date" [(ngModel)]="edicion['fechaIngresoGobierno']" /></div>
+        <div><label class="etiqueta">Banco</label><input class="campo" [(ngModel)]="edicion['banco']" /></div>
+        <div><label class="etiqueta">Cuenta o CLABE</label><input class="campo mono" maxlength="18" [(ngModel)]="edicion['cuentaBancaria']" /></div>
+        <div class="ancho acciones">
+          <label class="casilla"><input type="checkbox" [(ngModel)]="edicion['pagoCheque']" />Pago con cheque</label>
+          <label class="casilla"><input type="checkbox" [(ngModel)]="edicion['sindicalizado']" />Sindicalizado</label>
+          <label class="casilla"><input type="checkbox" [(ngModel)]="edicion['sci']" />Aporta al S.C.I.</label>
+        </div>
+      </div>
+      <p class="ayuda" style="margin-top: 14px">Un cambio de puesto, nivel o adscripción queda también como movimiento de personal.</p>
+      <ng-container pie>
+        <button type="button" class="boton" (click)="cajon.set(null)">Cancelar</button>
+        <button type="button" class="boton primario" [disabled]="guardando()" (click)="guardarEdicion()">Guardar</button>
+      </ng-container>
+    </app-cajon>
+
+    <app-cajon [abierto]="cajon() === 'descuento'" [titulo]="descuento.id ? 'Editar descuento' : 'Nuevo descuento a plazo'" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
+      <div class="formulario">
+        <div class="ancho">
+          <label class="etiqueta">Deducción</label>
+          <select class="campo" [(ngModel)]="descuento.conceptoId">
+            <option [ngValue]="null" disabled>Elige…</option>
+            @for (c of deducciones(); track c.id) {<option [ngValue]="c.id">{{ c.clave }} · {{ c.nombre }}</option>}
+          </select>
+        </div>
+        <div><label class="etiqueta">Importe por quincena</label><input class="campo cifra" type="number" step="0.01" [(ngModel)]="descuento.importeQuincenal" /></div>
+        <div>
+          <label class="etiqueta">O porcentaje del neto</label>
+          <input class="campo cifra" type="number" step="0.01" [(ngModel)]="descuento.porcentaje" />
+          <p class="ayuda">Para pensiones alimenticias. Si lo llenas, manda sobre el importe.</p>
+        </div>
+        <div>
+          <label class="etiqueta">Quincenas pendientes</label>
+          <input class="campo cifra" type="number" [(ngModel)]="descuento.quincenasPendientes" />
+          <p class="ayuda">Vacío: hasta que se retire.</p>
+        </div>
+        <div><label class="etiqueta">Beneficiario</label><input class="campo" [(ngModel)]="descuento.beneficiario" /></div>
+        <div class="ancho"><label class="casilla"><input type="checkbox" [(ngModel)]="descuento.activo" />Vigente</label></div>
+      </div>
+      <ng-container pie>
+        @if (descuento.id) {<button type="button" class="boton peligro" style="margin-right: auto" (click)="quitarDescuento(descuento.id!)">Eliminar</button>}
+        <button type="button" class="boton" (click)="cajon.set(null)">Cancelar</button>
+        <button type="button" class="boton primario" [disabled]="!descuento.conceptoId || guardando()" (click)="guardarDescuento()">Guardar</button>
+      </ng-container>
+    </app-cajon>
+
+    @for (tipo of ['baja', 'permiso', 'reingreso']; track tipo) {
+      <app-cajon [abierto]="cajon() === tipo" [titulo]="nombresMovimiento[tipo]" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
+        <div class="formulario">
+          @if (tipo === 'permiso') {
+            <div><label class="etiqueta">Desde</label><input class="campo" type="date" [(ngModel)]="movimiento.inicio" /></div>
+            <div><label class="etiqueta">Hasta</label><input class="campo" type="date" [(ngModel)]="movimiento.fin" /><p class="ayuda">Vacío si no tiene fecha de término.</p></div>
+          } @else {
+            <div><label class="etiqueta">Fecha</label><input class="campo" type="date" [(ngModel)]="movimiento.fecha" /></div>
+          }
+          @if (tipo !== 'reingreso') {
+            <div class="ancho">
+              <label class="etiqueta">Motivo</label>
+              <select class="campo" [(ngModel)]="movimiento.motivoClave">
+                <option value="" disabled>Elige…</option>
+                @for (m of motivos(); track m.clave) {
+                  @if (m.aplica === (tipo === 'baja' ? 'B' : 'P')) {<option [value]="m.clave">{{ m.nombre }}</option>}
+                }
+              </select>
+            </div>
+          }
+          <div class="ancho"><label class="etiqueta">Observaciones</label><textarea class="campo" [(ngModel)]="movimiento.observaciones"></textarea></div>
+        </div>
+        <p class="nota" style="margin-top: 14px">
+          @if (tipo === 'baja') {Deja de cobrar después de esta fecha; la quincena se paga proporcional.}
+          @else if (tipo === 'permiso') {Los días del permiso no se pagan; se descuentan solos al calcular.}
+          @else {Vuelve a cobrar desde esta fecha con sus conceptos fijos.}
+        </p>
+        <ng-container pie>
+          <button type="button" class="boton" (click)="cajon.set(null)">Cancelar</button>
+          <button type="button" class="boton" [class.primario]="tipo !== 'baja'" [class.peligro]="tipo === 'baja'" [disabled]="guardando() || (tipo !== 'reingreso' && !movimiento.motivoClave)" (click)="guardarMovimiento($any(tipo))">Registrar {{ tipo }}</button>
+        </ng-container>
+      </app-cajon>
+    }
+
+    <app-cajon [abierto]="cajon() === 'curp'" titulo="Corregir CURP" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
+      <label class="etiqueta">CURP correcta</label>
+      <input class="campo mono" maxlength="18" [(ngModel)]="nuevaCurp" />
+      <p class="ayuda">La anterior queda en la bitácora.</p>
+      <ng-container pie>
+        <button type="button" class="boton" (click)="cajon.set(null)">Cancelar</button>
+        <button type="button" class="boton primario" [disabled]="nuevaCurp.length !== 18 || guardando()" (click)="guardarCurp()">Guardar</button>
+      </ng-container>
+    </app-cajon>
+
+    <app-cajon [abierto]="cajon() === 'recibo'" titulo="Recibo" [ancho]="true" (cerrar)="cajon.set(null)">
+      @if (reciboId(); as id) {<app-recibo [reciboId]="id" />}
+    </app-cajon>
+  } @else {
+    <div class="esqueleto" style="height: 90px; margin-top: 16px"></div>
+    <div class="esqueleto" style="height: 260px"></div>
+  }
+</div>

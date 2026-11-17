@@ -1,0 +1,105 @@
+<div class="pagina">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Consultas · {{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Reportes</h1>
+      <p class="apagado">Cada uno indica qué programa del sistema anterior sustituye.</p>
+    </div>
+  </header>
+
+  <div class="disposicion" [class.con-reporte]="elegido()">
+    <nav class="catalogo" aria-label="Reportes disponibles">
+      @for (g of grupos(); track g.titulo) {
+        <p class="antetitulo">{{ g.titulo }}</p>
+        @for (r of g.reportes; track r.clave) {
+          <button type="button" class="reporte" [class.activo]="elegido()?.clave === r.clave" (click)="elegir(r)">
+            <strong>{{ r.titulo }}</strong>
+            <small>{{ r.descripcion }}</small>
+          </button>
+        }
+      }
+    </nav>
+
+    <section class="visor">
+      @if (elegido(); as r) {
+        <div class="tarjeta con-relleno filtros">
+          <div>
+            <h2 class="titulo-medio">{{ r.titulo }}</h2>
+            <p class="tenue chico">Sustituye a <span class="mono">{{ r.legado }}</span></p>
+          </div>
+          <div class="acciones">
+            @switch (r.filtro) {
+              @case ('calculo') {
+                <select class="campo" [(ngModel)]="periodoId" (ngModelChange)="cargarCalculos()" aria-label="Quincena">
+                  @for (p of periodos(); track p.id) {<option [ngValue]="p.id">Q{{ p.quincena.toString().padStart(2, '0') }}/{{ p.anio }} · {{ p.nombre }}</option>}
+                </select>
+                <select class="campo" [(ngModel)]="calculoId" aria-label="Cálculo">
+                  @for (c of calculos(); track c.id) {<option [ngValue]="c.id">{{ nombres[c.tipo] }}</option>}
+                  @empty {<option [ngValue]="null">Sin cálculos</option>}
+                </select>
+              }
+              @case ('mes') {
+                <select class="campo" [(ngModel)]="mes" aria-label="Mes">
+                  @for (m of meses; track m; let i = $index) {<option [ngValue]="i + 1">{{ m }}</option>}
+                </select>
+                <input class="campo cifra" type="number" style="width: 100px" [(ngModel)]="anio" aria-label="Año" />
+              }
+              @case ('anio') {
+                <input class="campo cifra" type="number" style="width: 100px" [(ngModel)]="anio" aria-label="Año" />
+              }
+            }
+            @if (r.ordenes) {
+              <select class="campo" [(ngModel)]="orden" aria-label="Orden">
+                @for (o of r.ordenes; track o.valor) {<option [value]="o.valor">{{ o.etiqueta }}</option>}
+              </select>
+            }
+            <button type="button" class="boton primario" [disabled]="cargando() || (r.filtro === 'calculo' && !calculoId)" (click)="ejecutar()">
+              @if (cargando()) {<span class="giro"></span>} Ver reporte
+            </button>
+          </div>
+        </div>
+
+        @if (tabla(); as t) {
+          <div class="cabeza-seccion resultado">
+            <div>
+              <strong>{{ t.subtitulo }}</strong>
+              <span class="tenue chico"> · {{ t.filas.length | numero }} renglones</span>
+            </div>
+            <div class="acciones">
+              <button type="button" class="boton chico" (click)="imprimir()">Imprimir</button>
+              <button type="button" class="boton chico" (click)="excel()"><app-icono nombre="excel" [tamano]="15" />Excel</button>
+            </div>
+          </div>
+          <div class="tabla-marco alto">
+            <table class="tabla">
+              <thead>
+                <tr>@for (c of t.columnas; track c.clave) {<th [class.der]="c.tipo === 'dinero' || c.tipo === 'numero'">{{ c.titulo }}</th>}</tr>
+              </thead>
+              <tbody>
+                @for (f of t.filas; track $index) {
+                  <tr>
+                    @for (c of t.columnas; track c.clave) {
+                      <td [class.der]="c.tipo === 'dinero' || c.tipo === 'numero'" [class.cifra]="c.tipo === 'dinero' || c.tipo === 'numero'" [class.firma]="c.clave === 'firma'">{{ valor(c, f) }}</td>
+                    }
+                  </tr>
+                } @empty {
+                  <tr><td [attr.colspan]="t.columnas.length"><div class="vacio"><p class="titulo-chico">Sin datos</p><p>No hay información para estos filtros.</p></div></td></tr>
+                }
+              </tbody>
+              @if (t.totales && t.filas.length) {
+                <tfoot>
+                  <tr>@for (c of t.columnas; track c.clave; let i = $index) {<td [class.der]="c.tipo === 'dinero' || c.tipo === 'numero'" class="cifra">{{ i === 0 ? 'Total' : total(c) }}</td>}</tr>
+                </tfoot>
+              }
+            </table>
+          </div>
+        }
+      } @else {
+        <div class="tarjeta vacio">
+          <p class="titulo-chico">Elige un reporte</p>
+          <p>Nómina, pagos, fiscal, seguridad social, contabilidad y personal.</p>
+        </div>
+      }
+    </section>
+  </div>
+</div>

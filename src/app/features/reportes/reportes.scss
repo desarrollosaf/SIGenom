@@ -1,0 +1,117 @@
+.disposicion {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.catalogo {
+  position: sticky;
+  top: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+
+  .antetitulo {
+    margin: 14px 10px 4px;
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+}
+
+.reporte {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  strong {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  small {
+    display: block;
+    color: var(--tenue);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  &:hover {
+    background: var(--fondo-2);
+  }
+
+  &.activo {
+    background: var(--acento-suave);
+
+    strong {
+      color: var(--acento);
+    }
+  }
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+
+  .campo {
+    width: auto;
+  }
+}
+
+.resultado {
+  margin: 18px 0 10px;
+}
+
+.alto {
+  max-height: 70vh;
+}
+
+.firma {
+  min-width: 160px;
+  border-bottom-style: dashed;
+}
+
+@media (max-width: 900px) {
+  .disposicion {
+    grid-template-columns: 1fr;
+  }
+
+  .catalogo {
+    position: static;
+    max-height: none;
+  }
+
+  .con-reporte .catalogo {
+    display: none;
+  }
+}
+
+@media print {
+  .catalogo,
+  .filtros,
+  .encabezado,
+  .resultado .acciones {
+    display: none !important;
+  }
+
+  .disposicion {
+    display: block;
+  }
+
+  .alto {
+    max-height: none;
+  }
+}

@@ -1,0 +1,357 @@
+<div class="pagina ancha">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Consultas · {{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Análisis de ISR</h1>
+      <p class="apagado">Sobre los recibos pagados del año. Cambia qué claves gravan ISR y todo se recalcula al instante: es una simulación hasta que la guardes en el catálogo.</p>
+    </div>
+    <div class="acciones">
+      <select class="campo" style="width: auto" [ngModel]="anio()" (ngModelChange)="anio.set($event)" aria-label="Año">
+        @for (a of datos()?.anios ?? []; track a) {<option [ngValue]="a">{{ a }}</option>}
+      </select>
+      @if (pestana() !== 'tarifa' && pestana() !== 'como') {
+        <button type="button" class="boton" (click)="exportar()"><app-icono nombre="descarga" [tamano]="15" />Exportar CSV</button>
+      }
+    </div>
+  </header>
+
+  @if (cargando() && !datos()) {
+    <div class="esqueleto" style="height: 90px"></div>
+    <div class="esqueleto" style="height: 300px"></div>
+  } @else if (error()) {
+    <p class="nota rojo">{{ error() }}</p>
+  } @else if (datos(); as d) {
+    @if (!d.recibos.length) {
+      <div class="tarjeta vacio">
+        <p class="titulo-chico">No hay nóminas pagadas en {{ d.anio }}</p>
+        <p>El análisis usa las nóminas definitivas, aguinaldos y primas ya calculados. Calcula y cierra una quincena para ver datos aquí.</p>
+        <a class="boton primario" routerLink="/proceso">Ir al proceso de nómina</a>
+      </div>
+    } @else {
+      <!-- Cifras -->
+      <section class="kpis">
+        <div class="kpi"><span class="t">Personas</span><span class="v">{{ kpi().personas | numero }}</span><span class="s">{{ kpi().recibos | numero }} recibos · {{ d.periodos.length }} pagos</span></div>
+        <div class="kpi"><span class="t">Percepciones</span><span class="v">{{ kpi().percepciones / 100 | moneda }}</span></div>
+        <div class="kpi"><span class="t">Gravado ISR</span><span class="v">{{ kpi().gravado / 100 | moneda }}</span><span class="s">{{ kpi().percepciones ? ((kpi().gravado / kpi().percepciones) * 100).toFixed(1) : 0 }} % de lo pagado</span></div>
+        <div class="kpi"><span class="t">ISR retenido</span><span class="v">{{ kpi().retenido / 100 | moneda }}</span><span class="s">Lo que se descontó en los recibos</span></div>
+        <div class="kpi"><span class="t">ISR calculado</span><span class="v">{{ kpi().calculado / 100 | moneda }}</span><span class="s">Con las marcas actuales</span></div>
+        <div class="kpi destacado" [class.falta]="kpi().diferencia > 0" [class.sobra]="kpi().diferencia < 0">
+          <span class="t">Diferencia</span>
+          <span class="v">{{ kpi().diferencia / 100 | moneda }}</span>
+          <span class="s">{{ kpi().diferencia > 0 ? 'Faltó retener' : kpi().diferencia < 0 ? 'Se retuvo de más' : 'Cuadra con lo retenido' }}</span>
+        </div>
+      </section>
+
+      @if (cambios().length) {
+        <div class="nota ambar simulacion">
+          <app-icono nombre="alerta" [tamano]="18" />
+          <span>Estás simulando {{ cambios().length }} {{ cambios().length === 1 ? 'cambio' : 'cambios' }} de "Grava ISR":
+            @for (c of cambios(); track c.id) {<strong class="mono">{{ c.clave }}</strong> {{ marcas().get(c.id) ? 'grava' : 'no grava' }}{{ $last ? '.' : ', ' }}}
+          </span>
+          <div class="acciones">
+            <button type="button" class="boton chico" (click)="restablecer()">Volver al catálogo</button>
+            @if (puedeGuardar()) {<button type="button" class="boton chico primario" (click)="guardarEnCatalogo()">Guardar en el catálogo</button>}
+          </div>
+        </div>
+      }
+
+      <!-- Filtros -->
+      <div class="barra-filtros">
+        <input class="campo buscar" type="search" placeholder="Buscar persona o clave" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" />
+        <select class="campo" [ngModel]="adscripcion()" (ngModelChange)="adscripcion.set($event)" aria-label="Adscripción">
+          <option value="">Todas las adscripciones</option>
+          @for (a of adscripciones(); track a) {<option [value]="a">{{ a }}</option>}
+        </select>
+        <select class="campo" [ngModel]="nivel()" (ngModelChange)="nivel.set($event)" aria-label="Nivel">
+          <option value="">Todos los niveles</option>
+          @for (n of niveles(); track n) {<option [value]="n">Nivel {{ n }}</option>}
+        </select>
+        @if (adscripcion() || nivel() || busqueda()) {<button type="button" class="boton chico fantasma" (click)="quitarFiltros()">Quitar filtros</button>}
+      </div>
+
+      <nav class="pestanas">
+        @for (p of pestanas; track p.clave) {
+          <button type="button" [class.activa]="pestana() === p.clave" (click)="pestana.set(p.clave)">{{ p.titulo }}</button>
+        }
+      </nav>
+
+      @switch (pestana()) {
+        <!-- CATÁLOGO DE CLAVES -->
+        @case ('catalogo') {
+          <div class="barra-filtros">
+            <div class="segmento">
+              <button type="button" [class.on]="naturaleza() === 'P'" (click)="naturaleza.set('P')">Percepciones</button>
+              <button type="button" [class.on]="naturaleza() === 'D'" (click)="naturaleza.set('D')">Deducciones</button>
+              <button type="button" [class.on]="naturaleza() === ''" (click)="naturaleza.set('')">Todo</button>
+            </div>
+            <span class="tenue chico">Marcar las percepciones de la tabla:</span>
+            <button type="button" class="boton chico" (click)="marcarTodas(true)">Gravar todo</button>
+            <button type="button" class="boton chico" (click)="marcarTodas(false)">Quitar Grava ISR</button>
+            <button type="button" class="boton chico fantasma" [disabled]="!hayHistorial()" (click)="deshacer()">Deshacer</button>
+          </div>
+          <div class="tabla-marco alto">
+            <table class="tabla">
+              <thead><tr><th class="min">Clave</th><th>Descripción</th><th>Tipo</th><th class="centro">Grava ISR</th><th class="der">Veces</th><th class="der">Importe total</th><th class="der">Exento</th><th class="der">Gravado</th></tr></thead>
+              <tbody>
+                @for (c of catalogo(); track c.id) {
+                  <tr [class.cambiado]="c.cambiado">
+                    <td class="mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
+                    <td>{{ c.descripcion }}@if (c.calculado) {<span class="sub" style="font-family: var(--sans)">Lo calcula el sistema</span>}</td>
+                    <td><span class="insignia sin-punto" [class.verde]="c.naturaleza === 'P'" [class.rojo]="c.naturaleza === 'D'">{{ c.naturaleza === 'P' ? 'Percepción' : 'Deducción' }}</span></td>
+                    <td class="centro">
+                      @if (c.naturaleza === 'P') {
+                        <input type="checkbox" class="marca" [checked]="c.marca" (change)="marcar(c.id, $any($event.target).checked)" [attr.aria-label]="'Grava ISR ' + c.descripcion" />
+                      } @else if (c.calculado === 'isr') {
+                        <span class="insignia sin-punto azul">Retención de ISR</span>
+                      }
+                    </td>
+                    <td class="der mono">{{ c.veces | numero }}</td>
+                    <td class="der cifra">{{ c.total / 100 | moneda }}</td>
+                    <td class="der cifra tenue">{{ c.naturaleza === 'P' ? (c.exento / 100 | moneda) : '' }}</td>
+                    <td class="der cifra">{{ c.naturaleza === 'P' ? (c.gravado / 100 | moneda) : '' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="tenue chico">Exento + gravado = importe total. El aguinaldo y la prima vacacional solo gravan lo que pasa de 30 y 15 UMA por pago.</p>
+        }
+
+        <!-- POR PERSONA -->
+        @case ('personas') {
+          <div class="barra-filtros">
+            <label class="chico apagado">Ordenar por
+              <select class="campo" [ngModel]="orden()" (ngModelChange)="orden.set($event)">
+                <option value="dif-desc">Diferencia (mayor primero)</option>
+                <option value="dif-asc">Diferencia (menor primero)</option>
+                <option value="nombre">Nombre</option>
+                <option value="gravado">Gravado (mayor primero)</option>
+              </select>
+            </label>
+            <span class="tenue chico">{{ personas().length | numero }} personas</span>
+          </div>
+          <div class="tabla-marco alto">
+            <table class="tabla">
+              <thead><tr><th>Nombre</th><th>Adscripción</th><th class="der">Nivel</th><th class="der">Recibos</th><th class="der">Percepciones</th><th class="der">Gravado</th><th class="der">ISR retenido</th><th class="der">ISR calculado</th><th class="der">Diferencia</th></tr></thead>
+              <tbody>
+                @for (p of personas(); track p.empleado) {
+                  <tr>
+                    <td><a class="principal" [routerLink]="['/empleados', p.id]">{{ p.nombre }}</a><span class="sub">{{ p.rfc }}</span></td>
+                    <td class="chico">{{ p.adscripcion }}</td>
+                    <td class="der mono">{{ p.nivel }}</td>
+                    <td class="der mono">{{ p.recibos }}</td>
+                    <td class="der cifra">{{ p.percepciones / 100 | moneda }}</td>
+                    <td class="der cifra">{{ p.gravado / 100 | moneda }}</td>
+                    <td class="der cifra">{{ p.retenido / 100 | moneda }}</td>
+                    <td class="der cifra">{{ p.calculado / 100 | moneda }}</td>
+                    <td class="der cifra" [class.falta-t]="p.diferencia > 0" [class.sobra-t]="p.diferencia < 0">{{ p.diferencia / 100 | moneda }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="tenue chico">Diferencia = ISR calculado − ISR retenido. Positiva (rojo): faltó retener. Negativa (verde): se retuvo de más.</p>
+        }
+
+        <!-- POR QUINCENA -->
+        @case ('quincenas') {
+          <div class="tabla-marco">
+            <table class="tabla">
+              <thead><tr><th>Pago</th><th>Tipo</th><th class="der">Recibos</th><th class="der">Percepciones</th><th class="der">Gravado</th><th class="der">ISR retenido</th><th class="der">ISR calculado</th><th class="der">Diferencia</th></tr></thead>
+              <tbody>
+                @for (q of quincenas(); track $index) {
+                  <tr>
+                    <td class="principal">Q{{ q.quincena.toString().padStart(2, '0') }}/{{ q.anio }}@if (!q.cerrado) {<span class="sub" style="font-family: var(--sans)">sin cerrar</span>}</td>
+                    <td>{{ nombres[q.tipo] }}</td>
+                    <td class="der mono">{{ q.recibos }}</td>
+                    <td class="der cifra">{{ q.percepciones / 100 | moneda }}</td>
+                    <td class="der cifra">{{ q.gravado / 100 | moneda }}</td>
+                    <td class="der cifra">{{ q.retenido / 100 | moneda }}</td>
+                    <td class="der cifra">{{ q.calculado / 100 | moneda }}</td>
+                    <td class="der cifra" [class.falta-t]="q.diferencia > 0" [class.sobra-t]="q.diferencia < 0">{{ q.diferencia / 100 | moneda }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot><tr><td colspan="3">Total</td><td class="der cifra">{{ kpi().percepciones / 100 | moneda }}</td><td class="der cifra">{{ kpi().gravado / 100 | moneda }}</td><td class="der cifra">{{ kpi().retenido / 100 | moneda }}</td><td class="der cifra">{{ kpi().calculado / 100 | moneda }}</td><td class="der cifra">{{ kpi().diferencia / 100 | moneda }}</td></tr></tfoot>
+            </table>
+          </div>
+        }
+
+        <!-- ISR POR CLAVE -->
+        @case ('clave') {
+          <p class="apagado chico">Reparte el ISR de cada recibo entre sus claves gravadas, en proporción a lo que grava cada una. Arriba el total; abajo elige a una persona para ver su cuadro.</p>
+          <div class="barra-filtros">
+            <span class="tenue chico">Repartir el</span>
+            <div class="segmento">
+              <button type="button" [class.on]="repartir() === 'calculado'" (click)="repartir.set('calculado')">ISR calculado</button>
+              <button type="button" [class.on]="repartir() === 'retenido'" (click)="repartir.set('retenido')">ISR retenido</button>
+            </div>
+          </div>
+          <ng-container [ngTemplateOutlet]="tablaClave" [ngTemplateOutletContext]="{ filas: isrPorClave() }" />
+          <div class="barra-filtros" style="margin-top: 18px">
+            <label class="chico apagado">Persona
+              <select class="campo" [ngModel]="persona()" (ngModelChange)="persona.set($event)">
+                <option [ngValue]="null">Elige…</option>
+                @for (p of personas(); track p.empleado) {<option [ngValue]="p.empleado">{{ p.nombre }}</option>}
+              </select>
+            </label>
+          </div>
+          @if (persona() !== null) {
+            <ng-container [ngTemplateOutlet]="tablaClave" [ngTemplateOutletContext]="{ filas: isrPorClavePersona() }" />
+          }
+        }
+
+        <!-- INCREMENTO -->
+        @case ('incremento') {
+          <p class="apagado chico">Si con las marcas actuales el ISR correcto es mayor que el retenido, ¿cuánto habría que subir el bruto de cada persona para que, reteniendo el ISR correcto, reciba el mismo neto que hoy (percepciones − ISR retenido)?</p>
+          <div class="barra-filtros">
+            <label class="casilla"><input type="checkbox" [ngModel]="soloIncremento()" (ngModelChange)="soloIncremento.set($event)" />Solo quien necesita incremento</label>
+            <span class="tenue chico">{{ incrementos().length | numero }} personas · total {{ totalIncremento() / 100 | moneda }}</span>
+          </div>
+          @if (!incrementos().length) {
+            <p class="nota verde"><app-icono nombre="listo" [tamano]="18" />Con las marcas actuales nadie necesita incremento: el ISR calculado no supera al retenido.</p>
+          } @else {
+            <div class="tabla-marco alto">
+              <table class="tabla">
+                <thead><tr><th>Nombre</th><th class="der">Recibos</th><th class="der">Con incremento</th><th class="der">ISR retenido</th><th class="der">ISR calculado</th><th class="der">Incremento necesario</th><th class="der">% sobre percepciones</th></tr></thead>
+                <tbody>
+                  @for (f of incrementos(); track f.empleado) {
+                    <tr class="clic" [class.elegido]="persona() === f.empleado" (click)="persona.set(f.empleado)">
+                      <td><span class="principal">{{ f.nombre }}</span><span class="sub">{{ f.adscripcion }}</span></td>
+                      <td class="der mono">{{ f.recibos }}</td>
+                      <td class="der mono">{{ f.con }}</td>
+                      <td class="der cifra">{{ f.retenido / 100 | moneda }}</td>
+                      <td class="der cifra">{{ f.calculado / 100 | moneda }}</td>
+                      <td class="der cifra principal">{{ f.incremento / 100 | moneda }}</td>
+                      <td class="der mono">{{ (f.porcentaje * 100).toFixed(2) }} %</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          @if (persona() !== null && detalleIncremento().length) {
+            <h2 class="titulo-chico" style="margin-top: 18px">Por pago · {{ d.empleados[persona()!].nombre }}</h2>
+            <div class="tabla-marco">
+              <table class="tabla">
+                <thead><tr><th>Pago</th><th class="der">Percepciones</th><th class="der">Gravado</th><th class="der">ISR retenido</th><th class="der">ISR calculado</th><th class="der">Incremento</th></tr></thead>
+                <tbody>
+                  @for (x of detalleIncremento(); track $index) {
+                    <tr>
+                      <td>Q{{ x.quincena.toString().padStart(2, '0') }} · {{ nombres[x.tipo] }}</td>
+                      <td class="der cifra">{{ x.r.percepciones / 100 | moneda }}</td>
+                      <td class="der cifra">{{ x.r.gravado / 100 | moneda }}</td>
+                      <td class="der cifra">{{ x.r.isrRetenido / 100 | moneda }}</td>
+                      <td class="der cifra">{{ x.r.isrCalculado / 100 | moneda }}</td>
+                      <td class="der cifra principal">{{ x.incremento / 100 | moneda }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        }
+
+        <!-- GRUPOS DE SUELDO -->
+        @case ('grupos') {
+          <p class="apagado chico">Agrupa a las personas por bloque de niveles con su sueldo mensual de la última quincena pagada (sueldo + compensación, llevado a quincena completa). La dispersión dice qué tan distinto gana la gente de un mismo grupo.</p>
+          <div class="barra-filtros">
+            <label class="chico apagado">Bloques de
+              <select class="campo" [ngModel]="bloque()" (ngModelChange)="bloque.set($event)">
+                @for (b of [1, 2, 3, 5]; track b) {<option [ngValue]="b">{{ b }} {{ b === 1 ? 'nivel' : 'niveles' }}</option>}
+              </select>
+            </label>
+            <label class="casilla"><input type="checkbox" [ngModel]="porAdscripcion()" (ngModelChange)="porAdscripcion.set($event)" />Separar por adscripción</label>
+          </div>
+          <div class="tabla-marco alto">
+            <table class="tabla">
+              <thead><tr>@if (porAdscripcion()) {<th>Adscripción</th>}<th>Grupo</th><th class="der">Personas</th><th class="der">Mínimo</th><th class="der">Promedio</th><th class="der">Máximo</th><th class="der">Dispersión</th></tr></thead>
+              <tbody>
+                @for (g of grupos(); track g.adscripcion + g.desde) {
+                  <tr class="clic" (click)="grupoAbierto.set(grupoAbierto() === g.adscripcion + g.desde ? null : g.adscripcion + g.desde)">
+                    @if (porAdscripcion()) {<td class="chico">{{ g.adscripcion }}</td>}
+                    <td class="principal">{{ g.titulo }}</td>
+                    <td class="der mono">{{ g.personas.length }}</td>
+                    <td class="der cifra">{{ g.min / 100 | moneda }}</td>
+                    <td class="der cifra">{{ g.promedio / 100 | moneda }}</td>
+                    <td class="der cifra">{{ g.max / 100 | moneda }}</td>
+                    <td class="der mono" [class.falta-t]="g.dispersion > 0.2">{{ (g.dispersion * 100).toFixed(1) }} %</td>
+                  </tr>
+                  @if (grupoAbierto() === g.adscripcion + g.desde) {
+                    <tr class="detalle"><td [attr.colspan]="porAdscripcion() ? 7 : 6">
+                      @for (p of g.personas; track $index) {<span class="persona-grupo">{{ p.nombre }} <span class="mono tenue">N{{ p.nivel }} · {{ p.mensual / 100 | moneda }}</span></span>}
+                    </td></tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        <!-- PARÁMETROS Y TARIFA -->
+        @case ('tarifa') {
+          <div class="dos">
+            <section>
+              <h2 class="titulo-chico">Tarifa quincenal de ISR vigente en {{ d.anio }}</h2>
+              <div class="tabla-marco" style="margin-top: 8px">
+                <table class="tabla">
+                  <thead><tr><th class="der">Límite inferior</th><th class="der">Cuota fija</th><th class="der">% excedente</th></tr></thead>
+                  <tbody>@for (r of d.tarifa; track $index) {<tr><td class="der cifra">{{ r[0] | moneda }}</td><td class="der cifra">{{ r[1] | moneda }}</td><td class="der mono">{{ r[2] }} %</td></tr>}</tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <h2 class="titulo-chico">Subsidio para el empleo</h2>
+              <div class="tabla-marco" style="margin-top: 8px">
+                <table class="tabla">
+                  <thead><tr><th class="der">Ingreso desde</th><th class="der">Subsidio</th></tr></thead>
+                  <tbody>@for (r of d.subsidio; track $index) {<tr><td class="der cifra">{{ r[0] | moneda }}</td><td class="der cifra">{{ r[1] | moneda }}</td></tr>}</tbody>
+                </table>
+              </div>
+              <dl class="datos" style="margin-top: 16px">
+                <div><dt>UMA diaria</dt><dd class="mono">{{ d.parametros.umaDiaria | moneda }}</dd></div>
+                <div><dt>Exento aguinaldo (30 UMA)</dt><dd class="mono">{{ d.parametros.umaDiaria * 30 | moneda }}</dd></div>
+                <div><dt>Exento prima (15 UMA)</dt><dd class="mono">{{ d.parametros.umaDiaria * 15 | moneda }}</dd></div>
+              </dl>
+              <p class="tenue chico" style="margin-top: 12px">Se editan en <a routerLink="/catalogos/tabla-isr">Tarifa de ISR</a>, <a routerLink="/catalogos/tabla-subsidio">Subsidio</a> y <a routerLink="/catalogos/parametros">Parámetros</a>.</p>
+            </section>
+          </div>
+        }
+
+        <!-- CÓMO FUNCIONA -->
+        @case ('como') {
+          <div class="tarjeta con-relleno como">
+            <p><strong>Qué hace.</strong> Toma todas las líneas de los recibos pagados del año (nómina definitiva, aguinaldo y prima de cada quincena) y recalcula, con las marcas de "Grava ISR", lo gravado y el ISR que se debió retener. Lo compara con el ISR que sí se retuvo (la clave que el catálogo marca como ISR).</p>
+            <p><strong>Grava ISR.</strong> La percepción suma a la base del impuesto. Aguinaldo y prima vacacional solo gravan lo que pasa de 30 y 15 UMA diarias en cada pago.</p>
+            <p><strong>ISR calculado.</strong> Por recibo: tarifa quincenal sobre lo gravado; en nómina se resta el subsidio para el empleo sin bajar de cero. Mismas reglas y redondeo que el cálculo de la nómina, así que con las marcas del catálogo la diferencia es cero.</p>
+            <p><strong>Diferencia</strong> = ISR calculado − ISR retenido. Positiva: faltó retener. Negativa: se retuvo de más.</p>
+            <p><strong>Incremento.</strong> Cuánto subir el bruto gravable de cada pago para que, reteniendo el ISR correcto, la persona reciba lo mismo que hoy (percepciones − ISR retenido).</p>
+            <p><strong>Las marcas.</strong> Son una simulación y se recuerdan en este navegador. "Guardar en el catálogo" las aplica a la clave para las siguientes nóminas; los recibos ya pagados no cambian.</p>
+            <p><strong>Lo que no hace todavía.</strong> No reparte el ISR por mes ni hace el ajuste anual; calcula pago por pago, como la nómina.</p>
+          </div>
+        }
+      }
+    }
+  }
+</div>
+
+<ng-template #tablaClave let-filas="filas">
+  <div class="tabla-marco">
+    <table class="tabla">
+      <thead><tr><th class="min">Clave</th><th>Descripción</th><th class="der">Gravado</th><th class="der">ISR {{ repartir() }}</th><th>Proporción</th></tr></thead>
+      <tbody>
+        @for (c of filas; track c.id) {
+          <tr>
+            <td class="mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
+            <td>{{ c.descripcion }}</td>
+            <td class="der cifra">{{ c.gravado / 100 | moneda }}</td>
+            <td class="der cifra principal">{{ c.isr / 100 | moneda }}</td>
+            <td class="barra-celda"><span class="barra-prop"><span [style.width.%]="c.proporcion * 100"></span></span><span class="mono tenue">{{ (c.proporcion * 100).toFixed(1) }} %</span></td>
+          </tr>
+        } @empty {
+          <tr><td colspan="5" class="tenue">Sin claves gravadas.</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</ng-template>

@@ -1,0 +1,121 @@
+<div class="pagina">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">{{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">{{ saludo() }}</h1>
+      @if (datos()?.periodo; as p) {
+        <p class="apagado">
+          {{ p.nombre }} · del {{ p.fechaInicio | fecha }} al {{ p.fechaFin | fecha }} · pago el {{ p.fechaPago | fecha }}
+        </p>
+      }
+    </div>
+  </header>
+
+  @if (cargando() && !datos()) {
+    <div class="esqueleto" style="height: 120px"></div>
+    <div class="esqueleto" style="height: 90px"></div>
+  } @else if (!datos()?.periodo) {
+    <div class="tarjeta vacio">
+      <p class="titulo-chico">Esta nómina todavía no tiene quincenas</p>
+      <p>Abre la primera para empezar a capturar.</p>
+      <a class="boton primario" routerLink="/quincenas">Abrir quincena</a>
+    </div>
+  } @else {
+    <!-- Ciclo de la quincena -->
+    <section class="tarjeta ciclo" aria-label="Avance de la quincena">
+      @for (paso of pasos(); track paso.titulo; let i = $index) {
+        <a class="paso" [class]="paso.estado" [routerLink]="paso.ruta">
+          <span class="marca-paso">
+            @if (paso.estado === 'hecho') {
+              <app-icono nombre="listo" [tamano]="14" [grosor]="2.4" />
+            } @else {
+              {{ i + 1 }}
+            }
+          </span>
+          <span class="texto-paso">
+            <strong>{{ paso.titulo }}</strong>
+            <small>{{ paso.detalle }}</small>
+          </span>
+          @if (paso.estado === 'actual') {
+            <span class="ir">Continuar <app-icono nombre="flecha" [tamano]="14" /></span>
+          }
+        </a>
+      }
+    </section>
+
+    <!-- Cifras -->
+    <section class="cifras seccion" aria-label="Cifras de la quincena">
+      <div class="cifra-bloque">
+        <span class="antetitulo">Plantilla activa</span>
+        <span class="valor">{{ datos()!.plantilla.activos | numero }}</span>
+        <p class="nota">{{ datos()!.plantilla.permiso }} con permiso · {{ datos()!.plantilla.bajas }} bajas en el año</p>
+      </div>
+      <div class="cifra-bloque">
+        <span class="antetitulo">Percepciones</span>
+        <span class="valor">{{ ultimo()?.totalPercepciones ?? null | moneda }}</span>
+        <p class="nota">{{ ultimo() ? nombres[ultimo()!.tipo] : 'Sin cálculo todavía' }}</p>
+      </div>
+      <div class="cifra-bloque">
+        <span class="antetitulo">Deducciones</span>
+        <span class="valor">{{ ultimo()?.totalDeducciones ?? null | moneda }}</span>
+        <p class="nota">ISR, ISSEMYM y descuentos</p>
+      </div>
+      <div class="cifra-bloque destacado">
+        <span class="antetitulo">Neto a pagar</span>
+        <span class="valor">{{ ultimo()?.totalNeto ?? null | moneda }}</span>
+        <p class="nota">{{ ultimo()?.totalEmpleados ?? 0 }} recibos</p>
+      </div>
+    </section>
+
+    <div class="dos">
+      <!-- Histórico -->
+      <section class="tarjeta con-relleno">
+        <div class="cabeza-seccion">
+          <h2 class="titulo-chico">Neto por quincena</h2>
+          <span class="tenue chico">Últimas nóminas cerradas</span>
+        </div>
+        @if (barras().length) {
+          <div class="grafica" role="img" aria-label="Neto pagado en las últimas quincenas">
+            @for (b of barras(); track b.etiqueta) {
+              <div class="barra" [title]="b.etiqueta + ': ' + (b.neto | moneda)">
+                <span class="relleno" [style.height.%]="b.alto"></span>
+                <span class="etiqueta-barra mono">Q{{ b.quincena }}</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="vacio chico">Aquí aparecerá la tendencia cuando cierres la primera quincena.</p>
+        }
+      </section>
+
+      <!-- Movimientos y cálculos -->
+      <section class="tarjeta con-relleno">
+        <div class="cabeza-seccion">
+          <h2 class="titulo-chico">En esta quincena</h2>
+          <a class="chico" routerLink="/movimientos">Ver movimientos</a>
+        </div>
+        <ul class="conteos">
+          <li><span>Altas y reingresos</span><strong class="cifra">{{ (datos()!.movimientos['alta'] ?? 0) + (datos()!.movimientos['reingreso'] ?? 0) }}</strong></li>
+          <li><span>Bajas</span><strong class="cifra">{{ datos()!.movimientos['baja'] ?? 0 }}</strong></li>
+          <li><span>Permisos</span><strong class="cifra">{{ datos()!.movimientos['permiso'] ?? 0 }}</strong></li>
+          <li><span>Cambios de puesto o nivel</span><strong class="cifra">{{ datos()!.movimientos['cambio'] ?? 0 }}</strong></li>
+        </ul>
+        @if (datos()!.calculos.length) {
+          <hr class="separador" />
+          <p class="antetitulo">Cálculos</p>
+          <ul class="conteos">
+            @for (c of datos()!.calculos; track c.id) {
+              <li>
+                <span>
+                  {{ nombres[c.tipo] }}
+                  <span class="insignia" [class.verde]="c.estado === 'terminado'" [class.rojo]="c.estado === 'error'" [class.azul]="c.estado === 'procesando' || c.estado === 'en_cola'">{{ c.estado.replace('_', ' ') }}</span>
+                </span>
+                <strong class="cifra">{{ c.totalNeto | moneda }}</strong>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    </div>
+  }
+</div>

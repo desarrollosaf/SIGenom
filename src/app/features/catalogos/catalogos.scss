@@ -1,0 +1,21 @@
+.catalogo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.12s;
+
+  &:hover {
+    border-color: var(--acento);
+  }
+
+  p:last-child {
+    margin-top: auto;
+    padding-top: 6px;
+  }
+}
+
+.formulario.uno {
+  grid-template-columns: 1fr;
+}

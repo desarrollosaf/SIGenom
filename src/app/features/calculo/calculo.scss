@@ -1,0 +1,99 @@
+.opciones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+
+.opcion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+
+  .boton {
+    margin-top: auto;
+  }
+
+  p {
+    flex: 1;
+    margin-bottom: 8px;
+  }
+}
+
+.icono-opcion {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+
+.progreso {
+  border-color: var(--azul);
+}
+
+.barra-progreso {
+  height: 8px;
+  margin-top: 12px;
+  border-radius: 99px;
+  background: var(--fondo-2);
+  overflow: hidden;
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 99px;
+    background: var(--acento);
+    transition: width 0.4s ease;
+  }
+}
+
+.historial {
+  display: flex;
+  gap: 10px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+
+.calculo {
+  display: flex;
+  flex: 0 0 240px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  background: var(--superficie);
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--linea-fuerte);
+  }
+
+  &.activo {
+    border-color: var(--acento);
+    box-shadow: 0 0 0 3px var(--acento-suave);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  .fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .neto {
+    font-size: 1.125rem;
+  }
+}

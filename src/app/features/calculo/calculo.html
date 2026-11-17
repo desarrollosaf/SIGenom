@@ -1,0 +1,127 @@
+<div class="pagina">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Quincena · {{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Cálculo</h1>
+      <p class="apagado">{{ contexto.periodo()?.nombre ?? 'Sin quincena abierta' }}. El cálculo corre en segundo plano: puedes seguir trabajando.</p>
+    </div>
+  </header>
+
+  @if (!contexto.periodo()) {
+    <div class="tarjeta vacio"><p class="titulo-chico">Abre una quincena para calcular</p><a class="boton primario" routerLink="/quincenas">Ir a quincenas</a></div>
+  } @else {
+    <section class="opciones">
+      @for (o of opciones(); track o.tipo) {
+        <div class="tarjeta opcion">
+          <div class="icono-opcion"><app-icono [nombre]="o.icono" [tamano]="18" /></div>
+          <h2 class="titulo-chico">{{ o.titulo }}</h2>
+          <p class="apagado chico">{{ o.texto }}</p>
+          <button
+            type="button"
+            class="boton chico"
+            [class.primario]="o.tipo === 'prenomina' || (o.tipo === 'nomina' && hayPrenomina())"
+            [disabled]="!puede() || !!enCurso() || enviando() || !!o.bloqueo"
+            [title]="o.bloqueo ?? ''"
+            (click)="calcular(o.tipo)"
+          >
+            <app-icono nombre="play" [tamano]="13" />Calcular
+          </button>
+          @if (o.bloqueo) {<p class="tenue chico">{{ o.bloqueo }}</p>}
+        </div>
+      }
+    </section>
+
+    @if (enCurso(); as c) {
+      <section class="tarjeta con-relleno seccion progreso" aria-live="polite">
+        <div class="cabeza-seccion">
+          <strong>{{ nombres[c.tipo] }} · {{ c.estado === 'en_cola' ? 'En cola, esperando al worker…' : 'Calculando…' }}</strong>
+          <span class="mono">{{ c.procesados | numero }} / {{ c.totalEmpleados | numero }}</span>
+        </div>
+        <div class="barra-progreso"><span [style.width.%]="porcentaje(c)"></span></div>
+      </section>
+    }
+
+    @if (calculos().length) {
+      <section class="seccion">
+        <h2 class="titulo-chico">Cálculos de la quincena</h2>
+        <div class="historial">
+          @for (c of calculos(); track c.id) {
+            <button type="button" class="calculo" [class.activo]="c.id === elegido()" [disabled]="c.estado !== 'terminado' && c.estado !== 'reemplazado'" (click)="elegir(c.id)">
+              <span class="fila">
+                <strong>{{ nombres[c.tipo] }}</strong>
+                <span class="insignia" [class.verde]="c.estado === 'terminado'" [class.rojo]="c.estado === 'error'" [class.azul]="c.estado === 'procesando' || c.estado === 'en_cola'">{{ c.estado.replace('_', ' ') }}</span>
+              </span>
+              <span class="cifra neto">{{ c.totalNeto | moneda }}</span>
+              <span class="tenue chico">{{ c.totalEmpleados }} recibos · {{ c.solicitadoPor }} · {{ c.creadoEl | fecha: true }}</span>
+              @if (c.error) {<span class="negativo chico">{{ c.error }}</span>}
+            </button>
+          }
+        </div>
+      </section>
+    }
+
+    @if (actual(); as c) {
+      @if (c.estado === 'terminado' || c.estado === 'reemplazado') {
+        <section class="seccion">
+          <div class="cifras">
+            <div class="cifra-bloque"><span class="antetitulo">Recibos</span><span class="valor">{{ c.totalEmpleados | numero }}</span></div>
+            <div class="cifra-bloque"><span class="antetitulo">Percepciones</span><span class="valor">{{ c.totalPercepciones | moneda }}</span></div>
+            <div class="cifra-bloque"><span class="antetitulo">Deducciones</span><span class="valor">{{ c.totalDeducciones | moneda }}</span></div>
+            <div class="cifra-bloque"><span class="antetitulo">Neto</span><span class="valor" style="color: var(--acento)">{{ c.totalNeto | moneda }}</span></div>
+          </div>
+
+          @if (c.estado === 'reemplazado') {
+            <p class="nota ambar" style="margin-top: 12px">Este cálculo fue reemplazado por uno más reciente del mismo tipo.</p>
+          }
+
+          <div class="barra-filtros" style="margin-top: 16px">
+            <input class="campo buscar" type="search" placeholder="Buscar recibo por nombre, CURP o RFC" [ngModel]="q()" (ngModelChange)="filtrar($event)" />
+            <label class="casilla"><input type="checkbox" [ngModel]="observados()" (ngModelChange)="observados.set($event); pagina.set(0)" />Solo con observaciones</label>
+            <span style="flex: 1"></span>
+            <button type="button" class="boton chico" (click)="comprobantes()"><app-icono nombre="pdf" [tamano]="15" />Comprobantes en PDF</button>
+          </div>
+
+          <div class="tabla-marco">
+            <table class="tabla">
+              <thead>
+                <tr><th>Empleado</th><th>Adscripción</th><th class="der">Nivel</th><th class="der">Días</th><th class="der">Percepciones</th><th class="der">Deducciones</th><th class="der">Neto</th></tr>
+              </thead>
+              <tbody>
+                @for (r of recibos(); track r.id) {
+                  <tr class="clic" (click)="reciboAbierto.set(r.id)" tabindex="0" (keydown.enter)="reciboAbierto.set(r.id)">
+                    <td>
+                      <span class="principal">{{ r.nombre }}</span>
+                      @if (r.observaciones.length) {<span class="sub" style="color: var(--ambar); font-family: var(--sans)">⚠ {{ r.observaciones[0] }}</span>}
+                      @else {<span class="sub">{{ r.curp }}</span>}
+                    </td>
+                    <td class="chico">{{ r.adscripcion }}</td>
+                    <td class="der mono">{{ r.nivel }}-{{ r.rango }}</td>
+                    <td class="der mono">{{ r.dias }}</td>
+                    <td class="der cifra">{{ r.totalPercepciones | moneda }}</td>
+                    <td class="der cifra">{{ r.totalDeducciones | moneda }}</td>
+                    <td class="der cifra principal" [class.negativo]="r.neto < 0">{{ r.neto | moneda }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="tenue">Sin recibos con estos filtros.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (paginas() > 1) {
+            <div class="paginacion">
+              <span>{{ totalRecibos() | numero }} recibos · página {{ pagina() + 1 }} de {{ paginas() }}</span>
+              <div class="acciones">
+                <button type="button" class="boton chico" [disabled]="pagina() === 0" (click)="pagina.set(pagina() - 1)">Anterior</button>
+                <button type="button" class="boton chico" [disabled]="pagina() + 1 >= paginas()" (click)="pagina.set(pagina() + 1)">Siguiente</button>
+              </div>
+            </div>
+          }
+        </section>
+      }
+    }
+  }
+
+  <app-cajon [abierto]="!!reciboAbierto()" titulo="Recibo" [ancho]="true" (cerrar)="reciboAbierto.set(null)">
+    @if (reciboAbierto(); as id) {<app-recibo [reciboId]="id" />}
+  </app-cajon>
+</div>

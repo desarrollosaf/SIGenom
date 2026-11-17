@@ -1,0 +1,116 @@
+.cabeza-ficha {
+  margin-top: 12px;
+}
+
+.identidad {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.avatar-grande {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--acento-suave);
+  color: var(--acento);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.etiquetas {
+  margin-top: 8px;
+  gap: 6px;
+}
+
+.importe {
+  width: 130px;
+  min-height: 30px;
+}
+
+.corto {
+  width: 130px;
+}
+
+.dos-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 12px;
+}
+
+.linea-tiempo {
+  position: relative;
+  margin: 0;
+  padding: 0 0 0 22px;
+  list-style: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 5px;
+    width: 1px;
+    background: var(--linea-fuerte);
+  }
+
+  li {
+    position: relative;
+    padding: 0 0 20px;
+
+    &.cancelado .evento {
+      opacity: 0.55;
+    }
+  }
+
+  .punto {
+    position: absolute;
+    top: 6px;
+    left: -22px;
+    width: 11px;
+    height: 11px;
+    border: 2px solid var(--superficie);
+    border-radius: 50%;
+    background: var(--tenue);
+    box-shadow: 0 0 0 1px var(--linea-fuerte);
+
+    &.alta,
+    &.reingreso {
+      background: var(--acento);
+    }
+
+    &.baja {
+      background: var(--rojo);
+    }
+
+    &.permiso {
+      background: var(--ambar);
+    }
+
+    &.cambio {
+      background: var(--azul);
+    }
+  }
+
+  .evento {
+    display: grid;
+    gap: 2px;
+  }
+}
+
+.enlace {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rojo);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.origen + .origen {
+  margin-left: 4px;
+}

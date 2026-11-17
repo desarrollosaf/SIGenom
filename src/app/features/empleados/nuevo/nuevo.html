@@ -1,0 +1,141 @@
+<div class="pagina angosta">
+  <a class="boton fantasma chico" routerLink="/empleados"><app-icono nombre="atras" [tamano]="15" />Empleados</a>
+  <header class="encabezado" style="margin-top: 12px">
+    <div>
+      <p class="antetitulo">Personal</p>
+      <h1 class="titulo">Alta de empleado</h1>
+      <p class="apagado">Queda registrado como movimiento de alta; entra en la quincena que contenga su fecha de alta.</p>
+    </div>
+  </header>
+
+  <form (ngSubmit)="guardar()" #f="ngForm">
+    <section class="tarjeta con-relleno">
+      <h2 class="titulo-chico">Identificación</h2>
+      <div class="formulario" style="margin-top: 14px">
+        <div>
+          <label class="etiqueta" for="curp">CURP</label>
+          <input id="curp" name="curp" class="campo mono" maxlength="18" required [ngModel]="datos.curp" (ngModelChange)="curpCambio($event)" />
+        </div>
+        <div>
+          <label class="etiqueta" for="rfc">RFC con homoclave</label>
+          <input id="rfc" name="rfc" class="campo mono" maxlength="13" required [(ngModel)]="datos.rfc" />
+        </div>
+        <div>
+          <label class="etiqueta" for="paterno">Apellido paterno</label>
+          <input id="paterno" name="paterno" class="campo" required [(ngModel)]="datos.apellidoPaterno" />
+        </div>
+        <div>
+          <label class="etiqueta" for="materno">Apellido materno</label>
+          <input id="materno" name="materno" class="campo" [(ngModel)]="datos.apellidoMaterno" />
+        </div>
+        <div>
+          <label class="etiqueta" for="nombres">Nombre(s)</label>
+          <input id="nombres" name="nombres" class="campo" required [(ngModel)]="datos.nombres" />
+        </div>
+        <div>
+          <label class="etiqueta" for="nacimiento">Fecha de nacimiento</label>
+          <input id="nacimiento" name="nacimiento" type="date" class="campo" [(ngModel)]="datos.fechaNacimiento" />
+        </div>
+      </div>
+    </section>
+
+    <section class="tarjeta con-relleno seccion">
+      <h2 class="titulo-chico">Datos de nómina</h2>
+      <div class="formulario" style="margin-top: 14px">
+        <div>
+          <label class="etiqueta" for="tipo">Nómina</label>
+          <select id="tipo" name="tipo" class="campo" [(ngModel)]="datos.tipoNomina">
+            @for (t of contexto.opciones()?.tiposNomina ?? []; track t.clave) {
+              <option [value]="t.clave">{{ t.nombre }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="etiqueta" for="alta">Fecha de alta</label>
+          <input id="alta" name="alta" type="date" class="campo" required [(ngModel)]="datos.fechaAlta" />
+        </div>
+        <div class="ancho">
+          <label class="etiqueta" for="ads">Adscripción</label>
+          <select id="ads" name="ads" class="campo" required [(ngModel)]="datos.adscripcionId">
+            <option [ngValue]="null" disabled>Elige…</option>
+            @for (a of contexto.opciones()?.adscripciones ?? []; track a.id) {
+              <option [ngValue]="a.id">{{ a.id }} · {{ a.nombre }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="etiqueta" for="puesto">Puesto</label>
+          <select id="puesto" name="puesto" class="campo" required [(ngModel)]="datos.puestoClave">
+            <option value="" disabled>Elige…</option>
+            @for (p of contexto.opciones()?.puestos ?? []; track p.clave) {
+              <option [value]="p.clave">{{ p.nombre }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="etiqueta" for="nivel">Nivel</label>
+          <input id="nivel" name="nivel" type="number" min="1" class="campo cifra" required [(ngModel)]="datos.nivel" />
+        </div>
+        <div>
+          <label class="etiqueta" for="rango">Rango</label>
+          <input id="rango" name="rango" type="number" min="1" max="5" class="campo cifra" required [(ngModel)]="datos.rango" />
+        </div>
+        <div>
+          <label class="etiqueta" for="issemym">Número ISSEMYM</label>
+          <input id="issemym" name="issemym" type="number" class="campo mono" [(ngModel)]="datos.numeroIssemym" />
+        </div>
+        <div>
+          <label class="etiqueta" for="ingreso">Ingreso al gobierno</label>
+          <input id="ingreso" name="ingreso" type="date" class="campo" [(ngModel)]="datos.fechaIngresoGobierno" />
+        </div>
+        <div>
+          <label class="etiqueta" for="cp">C.P. fiscal</label>
+          <input id="cp" name="cp" class="campo mono" maxlength="5" [(ngModel)]="datos.codigoPostalFiscal" />
+        </div>
+        <div class="ancho acciones">
+          <label class="casilla"><input type="checkbox" name="sind" [(ngModel)]="datos.sindicalizado" />Sindicalizado</label>
+          <label class="casilla"><input type="checkbox" name="sci" [(ngModel)]="datos.sci" />Aporta al S.C.I.</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="tarjeta con-relleno seccion">
+      <h2 class="titulo-chico">Pago</h2>
+      <div class="formulario" style="margin-top: 14px">
+        <div>
+          <label class="etiqueta" for="banco">Banco</label>
+          <input id="banco" name="banco" class="campo" [(ngModel)]="datos.banco" [disabled]="datos.pagoCheque" />
+        </div>
+        <div>
+          <label class="etiqueta" for="cuenta">Cuenta o CLABE</label>
+          <input id="cuenta" name="cuenta" class="campo mono" maxlength="18" inputmode="numeric" [(ngModel)]="datos.cuentaBancaria" [disabled]="datos.pagoCheque" />
+        </div>
+        <div class="ancho">
+          <label class="casilla"><input type="checkbox" name="cheque" [(ngModel)]="datos.pagoCheque" />Se le paga con cheque</label>
+        </div>
+        <div>
+          <label class="etiqueta" for="correo">Correo</label>
+          <input id="correo" name="correo" type="email" class="campo" [(ngModel)]="datos.correo" />
+        </div>
+        <div>
+          <label class="etiqueta" for="tel">Teléfono</label>
+          <input id="tel" name="tel" class="campo" [(ngModel)]="datos.telefono" />
+        </div>
+      </div>
+    </section>
+
+    @if (errores().length) {
+      <div class="nota rojo seccion" role="alert">
+        <app-icono nombre="alerta" [tamano]="16" />
+        <div>@for (e of errores(); track e) {<div>{{ e }}</div>}</div>
+      </div>
+    }
+
+    <div class="acciones seccion" style="justify-content: flex-end">
+      <a class="boton" routerLink="/empleados">Cancelar</a>
+      <button type="submit" class="boton primario" [disabled]="guardando() || f.invalid">
+        @if (guardando()) {<span class="giro"></span>} Dar de alta
+      </button>
+    </div>
+  </form>
+</div>

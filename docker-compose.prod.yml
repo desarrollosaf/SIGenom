@@ -1,0 +1,48 @@
+# Producción. PostgreSQL se espera en un servidor propio (DB_HOST en backend/.env); Redis va aquí
+# porque solo guarda la cola de trabajos, no datos de nómina.
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: DockerFile
+      args:
+        BASE_HREF: /nomina/
+    container_name: sigenom-frontend
+    ports:
+      - "8081:80"
+    restart: always
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: DockerFile
+    container_name: sigenom-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+    restart: always
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: DockerFile
+    command: ["node", "dist/worker.js"]
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+    deploy:
+      replicas: 2
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: sigenom-redis
+    restart: always

@@ -1,0 +1,131 @@
+<div [class.pagina]="!incrustado()">
+  @if (!incrustado()) {
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Quincena · {{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Pagos y dispersión</h1>
+      <p class="apagado">Cómo se paga la nómina calculada: transferencia, cheque, y quiénes no se pueden pagar todavía.</p>
+    </div>
+    @if (calculos().length > 1) {
+      <select class="campo" style="width: auto" [ngModel]="calculoId()" (ngModelChange)="calculoId.set($event)" aria-label="Cálculo">
+        @for (c of calculos(); track c.id) {<option [ngValue]="c.id">{{ nombres[c.tipo] }} · {{ c.totalNeto | moneda }}</option>}
+      </select>
+    }
+  </header>
+  }
+
+  @if (!calculos().length) {
+    <div class="tarjeta vacio">
+      <p class="titulo-chico">Todavía no hay una nómina para pagar</p>
+      <p>Calcula la nómina definitiva (o el aguinaldo) de la quincena.</p>
+      <a class="boton primario" routerLink="/calculo">Ir a cálculo</a>
+    </div>
+  } @else if (resumen(); as r) {
+    <div class="cifras">
+      <div class="cifra-bloque">
+        <span class="antetitulo">Transferencia</span>
+        <span class="valor">{{ r.transferencia.importe | moneda }}</span>
+        <p class="nota">{{ r.transferencia.total | numero }} cuentas</p>
+      </div>
+      <div class="cifra-bloque">
+        <span class="antetitulo">Cheque</span>
+        <span class="valor">{{ r.cheque.importe | moneda }}</span>
+        <p class="nota">{{ r.cheque.total }} cheques</p>
+      </div>
+      <div class="cifra-bloque">
+        <span class="antetitulo">Sin forma de pago</span>
+        <span class="valor" [class.negativo]="r.sinCuenta.total">{{ r.sinCuenta.importe | moneda }}</span>
+        <p class="nota">{{ r.sinCuenta.total }} personas sin cuenta válida</p>
+      </div>
+    </div>
+
+    <div class="rejilla seccion" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr))">
+      <section class="tarjeta con-relleno">
+        <h2 class="titulo-chico">Archivo para el banco</h2>
+        <p class="apagado chico">Layout portado del programa anterior. Valida un archivo de prueba con el banco antes del primer pago real.</p>
+        <div class="formulario" style="margin-top: 14px">
+          @if (!contratoBanamex()) {
+            <p class="nota ambar chico ancho">
+              El layout de Citibanamex necesita los datos del contrato (cliente, sucursal y cuenta de cargo). Captúralos en
+              <a routerLink="/catalogos/parametros">Catálogos → Parámetros</a>. Mientras tanto puedes generar el CSV.
+            </p>
+          }
+          <div class="ancho">
+            <label class="etiqueta">Layout</label>
+            <select class="campo" [(ngModel)]="layout">
+              @for (l of r.layouts; track l.clave) {<option [value]="l.clave">{{ l.nombre }}</option>}
+            </select>
+          </div>
+          <div><label class="etiqueta">Fecha de aplicación</label><input class="campo" type="date" [(ngModel)]="fecha" /></div>
+          <div><label class="etiqueta">Secuencia del día</label><input class="campo cifra" type="number" min="1" max="99" [(ngModel)]="secuencia" /></div>
+        </div>
+        <button type="button" class="boton primario" style="margin-top: 16px" [disabled]="!puede() || !r.transferencia.total" (click)="descargar()">
+          <app-icono nombre="descarga" [tamano]="16" />Generar archivo
+        </button>
+      </section>
+
+      <section class="tarjeta con-relleno">
+        <h2 class="titulo-chico">Documentos</h2>
+        <p class="apagado chico">Para firmas, tesorería y el archivo.</p>
+        <div class="documentos">
+          <button type="button" class="boton" (click)="comprobantes()"><app-icono nombre="pdf" [tamano]="16" />Comprobantes de pago</button>
+          <button type="button" class="boton" (click)="reporte('depositos')"><app-icono nombre="excel" [tamano]="16" />Relación de depósitos</button>
+          <button type="button" class="boton" (click)="reporte('cheques')"><app-icono nombre="excel" [tamano]="16" />Relación de cheques</button>
+          <button type="button" class="boton" (click)="reporte('firmas')"><app-icono nombre="excel" [tamano]="16" />Relación para firmas</button>
+        </div>
+      </section>
+    </div>
+
+    @if (!incrustado()) {
+    <section class="tarjeta con-relleno seccion siguiente">
+      <div>
+        <p class="antetitulo">Siguiente paso</p>
+        <h2 class="titulo-chico">Cerrar la quincena</h2>
+        <p class="apagado chico">
+          Cuando ya tengas el archivo del banco y los comprobantes, cierra la quincena: queda guardada, se descuenta una quincena a
+          los descuentos a plazo y se abre la siguiente.
+          @if (r.sinCuenta.total) { Ojo: {{ r.sinCuenta.total }} personas no se pudieron pagar por falta de cuenta (abajo). }
+        </p>
+      </div>
+      <a class="boton primario" routerLink="/quincenas">{{ puedeCerrar() ? 'Ir a cerrar' : 'Ver quincenas' }}</a>
+    </section>
+    }
+
+    @if (r.sinCuenta.total) {
+      <section class="seccion">
+        <h2 class="titulo-chico">Sin cuenta válida</h2>
+        <p class="apagado chico" style="margin-bottom: 10px">Captura su cuenta o márcalos para pago con cheque, y vuelve a calcular.</p>
+        <div class="tabla-marco">
+          <table class="tabla">
+            <thead><tr><th>Empleado</th><th>Cuenta registrada</th><th class="der">Neto</th></tr></thead>
+            <tbody>
+              @for (x of r.sinCuenta.recibos; track x.id) {
+                <tr><td><a class="principal" style="text-decoration: none" [routerLink]="['/empleados', x.empleadoId]">{{ x.nombre }}</a><span class="sub">{{ x.rfc }}</span></td><td class="mono">{{ x.cuenta ?? '—' }}</td><td class="der cifra">{{ x.neto | moneda }}</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    @if (r.cheque.total) {
+      <section class="seccion">
+        <h2 class="titulo-chico">Pago con cheque</h2>
+        <div class="tabla-marco" style="margin-top: 10px">
+          <table class="tabla">
+            <thead><tr><th>Empleado</th><th>RFC</th><th class="der">Importe</th></tr></thead>
+            <tbody>
+              @for (x of r.cheque.recibos; track x.id) {
+                <tr><td class="principal">{{ x.nombre }}</td><td class="mono">{{ x.rfc }}</td><td class="der cifra">{{ x.neto | moneda }}</td></tr>
+              }
+            </tbody>
+            <tfoot><tr><td colspan="2">Total</td><td class="der cifra">{{ r.cheque.importe | moneda }}</td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+    }
+  } @else {
+    <div class="esqueleto" style="height: 100px"></div>
+  }
+</div>
+

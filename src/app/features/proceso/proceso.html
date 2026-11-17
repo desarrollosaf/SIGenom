@@ -1,0 +1,240 @@
+<div class="pagina">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">{{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Proceso de nómina</h1>
+      <p class="apagado">
+        @if (detalle(); as d) {
+          {{ d.nombre }} · del {{ d.fechaInicio | fecha }} al {{ d.fechaFin | fecha }} · pago el {{ d.fechaPago | fecha }}
+        } @else {
+          Sin quincena abierta.
+        }
+      </p>
+    </div>
+  </header>
+
+  @if (recienCerrada(); as c) {
+    <!-- Pantalla de felicitación tras cerrar -->
+    <section class="tarjeta exito-grande">
+      <span class="sello"><app-icono nombre="listo" [tamano]="34" [grosor]="2.4" /></span>
+      <h2 class="titulo">Quincena cerrada</h2>
+      <p class="apagado">La {{ c.nombre }} quedó guardada: {{ c.recibos | numero }} recibos por {{ c.neto | moneda }}.</p>
+      @if (contexto.periodo(); as sig) {
+        <p>Ya está abierta la <strong>{{ sig.nombre }}</strong>, lista para capturar.</p>
+      }
+      <div class="acciones" style="justify-content: center; margin-top: 8px">
+        <a class="boton" routerLink="/quincenas">Ver historial</a>
+        <button type="button" class="boton primario" (click)="empezarSiguiente()">Empezar la siguiente quincena <app-icono nombre="flecha" [tamano]="15" /></button>
+      </div>
+    </section>
+  } @else if (!detalle()) {
+    <div class="tarjeta vacio">
+      <p class="titulo-chico">Esta nómina no tiene quincena abierta</p>
+      <p>Ábrela una sola vez desde el historial; después se abre sola cada vez que cierres.</p>
+      <a class="boton primario" routerLink="/quincenas">Abrir quincena</a>
+    </div>
+  } @else {
+    <!-- Barra de pasos -->
+    <section class="tarjeta pasos-barra" aria-label="Pasos del proceso">
+      <ol class="pasos">
+        @for (p of pasos; track p.clave; let i = $index) {
+          <li>
+            <button type="button" class="paso" [class]="estado(p.clave)" [disabled]="!disponible(p.clave)" (click)="ir(p.clave)" [attr.aria-current]="p.clave === activo() ? 'step' : null">
+              <span class="circulo">
+                @if (estado(p.clave) === 'hecho') {
+                  <app-icono nombre="listo" [tamano]="20" [grosor]="2.4" />
+                } @else {
+                  <app-icono [nombre]="p.icono" [tamano]="19" />
+                }
+              </span>
+              <span class="nombre">{{ p.titulo }}</span>
+            </button>
+          </li>
+        }
+      </ol>
+      <div class="pie-pasos">
+        <span>Paso <strong>{{ indice() + 1 }}</strong> de {{ pasos.length }} · {{ pasos[indice()].subtitulo }}</span>
+        <span class="avance" role="progressbar" [attr.aria-valuenow]="avance()" aria-valuemin="0" aria-valuemax="100"><span [style.width.%]="avance()"></span></span>
+      </div>
+    </section>
+
+    <!-- Contenido del paso -->
+    <section class="contenido-paso">
+      @switch (activo()) {
+        @case ('captura') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Captura de la quincena</h2>
+            <p class="apagado">Faltas, premios, comedor, gratificaciones: lo que solo se paga o descuenta en esta quincena. Si no hay nada, continúa.</p>
+          </div>
+          @if (resumenCaptura().total) {
+            <p class="aviso verde"><app-icono nombre="listo" [tamano]="18" />{{ resumenCaptura().total }} movimientos de {{ resumenCaptura().personas }} personas · percepciones {{ resumenCaptura().p | moneda }} · deducciones {{ resumenCaptura().d | moneda }}.</p>
+          } @else {
+            <p class="aviso azul"><app-icono nombre="info" [tamano]="18" />Todavía no hay nada capturado. Si esta quincena no tiene incidencias, puedes continuar.</p>
+          }
+          @if (prenominaVieja()) {
+            <p class="aviso ambar"><app-icono nombre="alerta" [tamano]="18" />Capturaste {{ prenominaVieja() }} movimientos después de la prenómina. Al continuar, vuelve a calcularla.</p>
+          }
+          <app-captura [incrustado]="true" />
+        }
+
+        @case ('prenomina') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Prenómina</h2>
+            <p class="apagado">Un cálculo completo para revisar. No se paga y se puede repetir las veces que haga falta.</p>
+          </div>
+          <ng-container *ngTemplateOutlet="calculoTpl; context: { tipo: 'prenomina', calculo: prenomina(), vieja: prenominaVieja() }" />
+        }
+
+        @case ('verificacion') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Verificación</h2>
+            <p class="apagado">Revisiones automáticas antes de pagar.</p>
+          </div>
+          @if (diagnosticos(); as d) {
+            @if (!resumenDiag().errores.length && !resumenDiag().avisos.length) {
+              <p class="aviso verde grande"><app-icono nombre="listo" [tamano]="22" /><span><strong>Todo correcto.</strong> Ninguna revisión encontró problemas. Puedes calcular la nómina definitiva.</span></p>
+            } @else if (resumenDiag().errores.length) {
+              <p class="aviso rojo grande"><app-icono nombre="alerta" [tamano]="22" /><span><strong>{{ resumenDiag().errores.length }} {{ resumenDiag().errores.length === 1 ? 'revisión con errores' : 'revisiones con errores' }}.</strong> Conviene corregirlos en la ficha de cada persona y volver a calcular la prenómina. Si ya lo sabes, puedes continuar de todos modos.</span></p>
+            } @else {
+              <p class="aviso ambar grande"><app-icono nombre="alerta" [tamano]="22" /><span><strong>Sin errores, {{ resumenDiag().avisos.length }} avisos.</strong> Revísalos; no impiden pagar.</span></p>
+            }
+          }
+          <app-verificacion [incrustado]="true" />
+        }
+
+        @case ('nomina') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Nómina definitiva</h2>
+            <p class="apagado">Es la que se paga y se dispersa al banco. Usa lo mismo que la prenómina; si cambiaste algo después, aquí se refleja.</p>
+          </div>
+          @if (prenomina() && !nomina()) {
+            <p class="aviso azul"><app-icono nombre="info" [tamano]="18" />La prenómina dio {{ prenomina()!.totalNeto | moneda }} de neto. La definitiva debe dar lo mismo si no cambiaste nada.</p>
+          }
+          <ng-container *ngTemplateOutlet="calculoTpl; context: { tipo: 'nomina', calculo: nomina(), vieja: nominaVieja() }" />
+          @if (nomina() && prenomina() && nomina()!.totalNeto !== prenomina()!.totalNeto) {
+            <p class="aviso ambar"><app-icono nombre="alerta" [tamano]="18" />Cambió contra la prenómina: {{ prenomina()!.totalNeto | moneda }} → {{ nomina()!.totalNeto | moneda }}. Es normal si capturaste o corregiste algo.</p>
+          }
+        }
+
+        @case ('pago') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Pago</h2>
+            <p class="apagado">Genera el archivo para el banco y los comprobantes. Cuando termines, continúa al cierre.</p>
+          </div>
+          <app-pagos [incrustado]="true" />
+        }
+
+        @case ('cierre') {
+          <div class="cabeza-paso">
+            <h2 class="titulo-medio">Cierre de la quincena</h2>
+            <p class="apagado">Al cerrar, la quincena queda guardada tal cual y se abre la siguiente sola.</p>
+          </div>
+          <ul class="lista-cierre">
+            <li [class.ok]="!!nomina()" [class.mal]="!nomina()">
+              <app-icono [nombre]="nomina() ? 'listo' : 'cerrar'" [tamano]="18" [grosor]="2.2" />
+              <span>{{ nomina() ? 'Nómina definitiva calculada: ' + (nomina()!.totalEmpleados) + ' recibos' : 'Falta calcular la nómina definitiva' }}
+                @if (nomina()) {<strong class="cifra"> · {{ nomina()!.totalNeto | moneda }}</strong>}</span>
+            </li>
+            <li [class.ok]="!nominaVieja()" [class.mal]="nominaVieja()">
+              <app-icono [nombre]="nominaVieja() ? 'cerrar' : 'listo'" [tamano]="18" [grosor]="2.2" />
+              <span>{{ nominaVieja() ? nominaVieja() + ' capturas posteriores al cálculo: vuelve a calcular la nómina' : 'No hay capturas después del cálculo' }}</span>
+            </li>
+            <li [class.ok]="!resumenDiag().errores.length" [class.aviso-li]="resumenDiag().errores.length">
+              <app-icono [nombre]="resumenDiag().errores.length ? 'alerta' : 'listo'" [tamano]="18" [grosor]="2.2" />
+              <span>{{ resumenDiag().errores.length ? resumenDiag().errores.length + ' revisiones con errores (no impiden cerrar)' : 'Verificación sin errores' }}</span>
+            </li>
+            <li [class.ok]="vistos().has('pago')" [class.aviso-li]="!vistos().has('pago')">
+              <app-icono [nombre]="vistos().has('pago') ? 'listo' : 'alerta'" [tamano]="18" [grosor]="2.2" />
+              <span>{{ vistos().has('pago') ? 'Pago revisado' : 'No marcaste el pago como revisado' }}</span>
+            </li>
+          </ul>
+          @if (!puedeCerrar()) {
+            <p class="aviso azul"><app-icono nombre="info" [tamano]="18" />Solo un administrador puede cerrar la quincena.</p>
+          }
+          <div class="cerrar-caja">
+            <button type="button" class="boton primario grande" [disabled]="!puedeCerrar() || !nomina() || !!nominaVieja() || enviando()" (click)="cerrar()">
+              <app-icono nombre="candado" [tamano]="17" />Cerrar la {{ detalle()!.nombre }}
+            </button>
+          </div>
+        }
+      }
+    </section>
+
+    <!-- Navegación -->
+    @if (activo() !== 'cierre') {
+      <nav class="navegacion">
+        <button type="button" class="boton" [disabled]="indice() === 0" (click)="anterior()"><app-icono nombre="atras" [tamano]="15" />Anterior</button>
+        @if (activo() === 'prenomina' && (!prenomina() || prenominaVieja())) {
+          <span class="chico" style="color: var(--ambar)">Calcula la prenómina para continuar</span>
+        } @else if (activo() === 'nomina' && (!nomina() || nominaVieja())) {
+          <span class="chico" style="color: var(--ambar)">Calcula la nómina definitiva para continuar</span>
+        } @else {
+          <span class="tenue chico">{{ pasos[indice() + 1] ? 'Sigue: ' + pasos[indice() + 1].titulo : '' }}</span>
+        }
+        @if (activo() === 'prenomina' && (!prenomina() || prenominaVieja())) {
+          <button type="button" class="boton primario" disabled title="Calcula primero">Continuar <app-icono nombre="flecha" [tamano]="15" /></button>
+        } @else if (activo() === 'nomina' && (!nomina() || nominaVieja())) {
+          <button type="button" class="boton primario" disabled title="Calcula primero">Continuar <app-icono nombre="flecha" [tamano]="15" /></button>
+        } @else {
+          <button type="button" class="boton primario" (click)="continuar()">
+            {{ activo() === 'verificacion' && resumenDiag().errores.length ? 'Continuar de todos modos' : activo() === 'pago' ? 'Listo, ir al cierre' : 'Continuar' }}
+            <app-icono nombre="flecha" [tamano]="15" />
+          </button>
+        }
+      </nav>
+    }
+  }
+</div>
+
+<!-- Bloque de cálculo, igual para prenómina y nómina -->
+<ng-template #calculoTpl let-tipo="tipo" let-calculo="calculo" let-vieja="vieja">
+  @if (enCurso(); as c) {
+    <div class="tarjeta con-relleno calculando" aria-live="polite">
+      <div class="cabeza-seccion">
+        <strong><span class="giro"></span> {{ c.estado === 'en_cola' ? 'En cola, el worker lo toma en un momento…' : 'Calculando…' }}</strong>
+        <span class="mono">{{ c.procesados | numero }} / {{ c.totalEmpleados | numero }}</span>
+      </div>
+      <div class="barra-progreso"><span [style.width.%]="porcentaje(c)"></span></div>
+      <p class="tenue chico">Puedes quedarte aquí o seguir en otra pantalla; el cálculo continúa.</p>
+    </div>
+  } @else if (calculo && !vieja) {
+    <p class="aviso verde grande"><app-icono nombre="listo" [tamano]="22" /><span><strong>{{ tipo === 'nomina' ? 'Nómina calculada.' : 'Prenómina calculada.' }}</strong> {{ calculo.totalEmpleados | numero }} recibos · {{ calculo.creadoEl | fecha: true }} · por {{ calculo.solicitadoPor }}.</span></p>
+    <div class="cifras">
+      <div class="cifra-bloque"><span class="antetitulo">Percepciones</span><span class="valor">{{ calculo.totalPercepciones | moneda }}</span></div>
+      <div class="cifra-bloque"><span class="antetitulo">Deducciones</span><span class="valor">{{ calculo.totalDeducciones | moneda }}</span></div>
+      <div class="cifra-bloque"><span class="antetitulo">Neto a pagar</span><span class="valor" style="color: var(--acento)">{{ calculo.totalNeto | moneda }}</span></div>
+    </div>
+    @if (observados().length) {
+      <div class="tarjeta con-relleno observados">
+        <p class="titulo-chico">Recibos con observaciones</p>
+        <ul>
+          @for (r of observados(); track r.id) {
+            <li><a [routerLink]="['/empleados', r.empleadoId]">{{ r.nombre }}</a><span class="apagado"> · {{ r.observaciones[0] }}</span></li>
+          }
+        </ul>
+        <a class="chico" routerLink="/calculo">Ver todos los recibos</a>
+      </div>
+    }
+    @if (puedeCalcular()) {
+      <button type="button" class="boton chico" (click)="calcular(tipo)" [disabled]="enviando()">Volver a calcular</button>
+    }
+  } @else {
+    @if (vieja) {
+      <p class="aviso ambar"><app-icono nombre="alerta" [tamano]="18" />Hay {{ vieja }} capturas posteriores al último cálculo. Vuelve a calcular para incluirlas.</p>
+    }
+    @if (fallido(); as f) {
+      <p class="aviso rojo"><app-icono nombre="alerta" [tamano]="18" />El último cálculo falló: {{ f.error }}</p>
+    }
+    <div class="tarjeta lanzar">
+      <span class="icono-grande"><app-icono [nombre]="tipo === 'nomina' ? 'listo' : 'calculo'" [tamano]="26" /></span>
+      <div>
+        <p class="titulo-chico">{{ tipo === 'nomina' ? 'Calcular la nómina definitiva' : 'Calcular la prenómina' }}</p>
+        <p class="apagado chico">Tarda unos segundos. Corre en segundo plano y verás el avance aquí.</p>
+      </div>
+      <button type="button" class="boton primario grande" [disabled]="!puedeCalcular() || enviando()" (click)="calcular(tipo)">
+        <app-icono nombre="play" [tamano]="14" />Calcular
+      </button>
+    </div>
+    @if (!puedeCalcular()) {<p class="tenue chico">Tu usuario solo puede consultar.</p>}
+  }
+</ng-template>

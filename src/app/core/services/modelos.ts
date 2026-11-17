@@ -1,0 +1,388 @@
+/** Tipos de lo que regresa la API. */
+
+export type EstadoEmpleado = 'activo' | 'permiso' | 'baja';
+export type EstadoPeriodo = 'captura' | 'prenomina' | 'nomina' | 'cerrado';
+export type TipoCalculo = 'prenomina' | 'nomina' | 'aguinaldo' | 'prima_vacacional';
+export type EstadoCalculo = 'en_cola' | 'procesando' | 'terminado' | 'error' | 'reemplazado';
+
+export interface TipoNomina {
+  clave: string;
+  nombre: string;
+}
+
+export interface Opciones {
+  tiposNomina: TipoNomina[];
+  adscripciones: { id: number; nombre: string }[];
+  puestos: { clave: string; nombre: string }[];
+  motivos: { clave: string; nombre: string; aplica: 'B' | 'P' }[];
+  conceptos: ConceptoOpcion[];
+}
+
+export interface ConceptoOpcion {
+  id: number;
+  tipoNomina: string;
+  clave: number;
+  nombre: string;
+  naturaleza: 'P' | 'D';
+  periodicidad: 'F' | 'E';
+  calculado: string | null;
+}
+
+export interface Periodo {
+  id: number;
+  tipoNomina: string;
+  anio: number;
+  quincena: number;
+  nombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+  fechaPago: string | null;
+  estado: EstadoPeriodo;
+  cerradoPor: string | null;
+  cerradoEl: string | null;
+}
+
+export interface Calculo {
+  id: number;
+  periodoId: number;
+  tipo: TipoCalculo;
+  estado: EstadoCalculo;
+  totalEmpleados: number;
+  procesados: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  totalNeto: number;
+  error: string | null;
+  solicitadoPor: string;
+  iniciadoEl: string | null;
+  terminadoEl: string | null;
+  creadoEl: string;
+}
+
+export interface PeriodoDetalle extends Periodo {
+  capturas: number;
+  calculos: Calculo[];
+}
+
+export interface EmpleadoResumen {
+  id: number;
+  curp: string;
+  rfc: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string | null;
+  nombres: string;
+  tipoNomina: string;
+  adscripcionId: number;
+  adscripcion: string | null;
+  puestoClave: string;
+  puesto: string | null;
+  nivel: number;
+  rango: number;
+  numeroIssemym: number | null;
+  sindicalizado: boolean;
+  sci: boolean;
+  estado: EstadoEmpleado;
+  fechaAlta: string;
+  fechaBaja: string | null;
+  fechaIngresoGobierno: string | null;
+  fechaNacimiento: string | null;
+  codigoPostalFiscal: string | null;
+  banco: string | null;
+  cuentaBancaria: string | null;
+  pagoCheque: boolean;
+}
+
+export interface ConceptoCorto {
+  id: number;
+  clave: number;
+  nombre: string;
+  naturaleza: 'P' | 'D';
+}
+
+export interface DatosPersonales {
+  sexo: string | null;
+  estadoCivil: string | null;
+  correo: string | null;
+  telefono: string | null;
+  domicilio: string | null;
+  colonia: string | null;
+  codigoPostal: string | null;
+  entidad: string | null;
+  profesion: string | null;
+  observaciones: string | null;
+}
+
+export interface Movimiento {
+  id: number;
+  tipo: 'alta' | 'baja' | 'permiso' | 'reingreso' | 'cambio';
+  motivo: string | null;
+  fechaInicio: string;
+  fechaFin: string | null;
+  detalle: Record<string, unknown> | null;
+  observaciones: string | null;
+  cancelado: boolean;
+  registradoPor: string;
+}
+
+export interface FichaEmpleado extends EmpleadoResumen {
+  datosPersonales: DatosPersonales | null;
+  tabulador: { sueldoMensual: number; compensacionMensual: number } | null;
+  sucursal: { sucursal: number; tipo: string } | null;
+  fijos: { id: number; importe: number; concepto: ConceptoCorto }[];
+  descuentosPlazo: {
+    id: number;
+    importeQuincenal: number;
+    porcentaje: number | null;
+    quincenasPendientes: number | null;
+    beneficiario: string | null;
+    activo: boolean;
+    concepto: ConceptoCorto;
+  }[];
+  cuentasContables: { id: number; partida: string; concepto: ConceptoCorto }[];
+  movimientos: Movimiento[];
+  recibos: {
+    id: number;
+    tipo: TipoCalculo;
+    anio: number;
+    quincena: number;
+    totalPercepciones: number;
+    totalDeducciones: number;
+    neto: number;
+  }[];
+}
+
+export type OrigenClave = 'calculado' | 'fija' | 'plazo' | 'captura';
+
+export interface QuincenaEmpleado {
+  periodo: { id: number | null; nombre: string; estado: EstadoPeriodo | null };
+  dias: number;
+  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; origenes: OrigenClave[] }[];
+  baseIsr: number;
+  baseIssemym: number;
+  isrCausado: number;
+  subsidio: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  neto: number;
+  observaciones: string[];
+}
+
+/** Datos del Análisis de ISR. Las líneas van compactas: [índice del recibo, concepto, centavos]. */
+export interface DatosAnalisis {
+  tipoNomina: string;
+  anio: number;
+  anios: number[];
+  parametros: { umaDiaria: number; diasQuincena: number };
+  tarifa: [number, number, number][];
+  subsidio: [number, number][];
+  conceptos: { id: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; gravaIsr: boolean; calculado: string | null }[];
+  periodos: { tipo: TipoCalculo; anio: number; quincena: number; cerrado: boolean }[];
+  empleados: { id: number; nombre: string; rfc: string; adscripcion: string; nivel: number; rango: number }[];
+  recibos: { id: number; e: number; p: number; dias: number }[];
+  lineas: [number, number, number][];
+}
+
+export interface MovimientoLista {
+  id: number;
+  empleadoId: number;
+  nombre: string;
+  curp: string;
+  tipo: Movimiento['tipo'];
+  motivo: string | null;
+  fechaInicio: string;
+  fechaFin: string | null;
+  observaciones: string | null;
+  cancelado: boolean;
+  registradoPor: string;
+}
+
+export interface Captura {
+  id: number;
+  empleadoId: number;
+  nombre: string;
+  curp: string;
+  conceptoId: number;
+  clave: number;
+  concepto: string;
+  naturaleza: 'P' | 'D';
+  importe: number;
+  origen: string;
+  referencia: string | null;
+  registradoPor: string;
+  creadoEl: string;
+}
+
+export interface ReciboFila {
+  id: number;
+  empleadoId: number;
+  nombre: string;
+  curp: string;
+  adscripcion: string;
+  nivel: number;
+  rango: number;
+  dias: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  neto: number;
+  observaciones: string[];
+}
+
+export interface ReciboDetalle {
+  id: number;
+  calculo: Calculo;
+  periodo: Periodo;
+  empleadoId: number;
+  nombre: string;
+  curp: string;
+  rfc: string;
+  adscripcion: string;
+  puesto: string;
+  nivel: number;
+  rango: number;
+  dias: number;
+  baseIsr: number;
+  baseIssemym: number;
+  isrCausado: number;
+  subsidio: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  neto: number;
+  cuentaBancaria: string | null;
+  pagoCheque: boolean;
+  observaciones: string[];
+  conceptos: { clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number }[];
+}
+
+export interface Diagnostico {
+  clave: string;
+  titulo: string;
+  descripcion: string;
+  severidad: 'error' | 'aviso';
+  legado: string;
+  total: number;
+  muestras: { empleadoId: number | null; nombre: string; detalle: string }[];
+}
+
+export interface ReciboPago {
+  id: number;
+  empleadoId: number;
+  nombre: string;
+  rfc: string;
+  cuenta: string | null;
+  neto: number;
+}
+
+export interface ResumenDispersion {
+  calculo: { id: number; tipo: TipoCalculo; periodoId: number };
+  layouts: { clave: string; nombre: string; extension: string; legado: string }[];
+  transferencia: { total: number; importe: number };
+  cheque: { total: number; importe: number; recibos: ReciboPago[] };
+  sinCuenta: { total: number; importe: number; recibos: ReciboPago[] };
+}
+
+export interface ColumnaReporte {
+  clave: string;
+  titulo: string;
+  tipo?: 'texto' | 'dinero' | 'numero' | 'fecha';
+}
+
+export interface DefinicionReporte {
+  clave: string;
+  titulo: string;
+  descripcion: string;
+  grupo: string;
+  legado: string;
+  filtro: 'calculo' | 'mes' | 'anio' | 'nomina';
+  columnas: ColumnaReporte[];
+  totales?: string[];
+  ordenes?: { valor: string; etiqueta: string }[];
+}
+
+export interface TablaReporte {
+  titulo: string;
+  subtitulo?: string;
+  columnas: ColumnaReporte[];
+  filas: Record<string, unknown>[];
+  totales?: Record<string, number>;
+}
+
+export interface CampoCatalogo {
+  clave: string;
+  titulo: string;
+  tipo: 'texto' | 'entero' | 'dinero' | 'decimal' | 'fecha' | 'booleano' | 'opcion';
+  requerido?: boolean;
+  max?: number;
+  opciones?: { valor: string; etiqueta: string }[] | 'tiposNomina';
+  llave?: boolean;
+  soloFormulario?: boolean;
+  ayuda?: string;
+}
+
+export interface DefinicionCatalogo {
+  clave: string;
+  titulo: string;
+  descripcion: string;
+  legado: string;
+  llave: string;
+  campos: CampoCatalogo[];
+  porTipoNomina?: boolean;
+  soloEdicion?: boolean;
+  total: number;
+}
+
+export interface Tablero {
+  periodo: Periodo | null;
+  plantilla: { activos: number; permiso: number; bajas: number };
+  capturas: { total: number; empleados: number };
+  movimientos: Record<string, number>;
+  calculos: (Pick<Calculo, 'id' | 'tipo' | 'estado' | 'totalNeto' | 'totalPercepciones' | 'totalDeducciones' | 'totalEmpleados' | 'procesados' | 'terminadoEl'>)[];
+  historico: { etiqueta: string; anio: number; quincena: number; neto: number; percepciones: number; empleados: number }[];
+}
+
+export interface ResultadoSimulacion {
+  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number }[];
+  dias: number;
+  baseIsr: number;
+  baseIssemym: number;
+  isrCausado: number;
+  subsidio: number;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  neto: number;
+  observaciones: string[];
+}
+
+export interface UsuarioSistema {
+  id: number;
+  usuario: string;
+  nombre: string;
+  rol: string;
+  activo: boolean;
+  ultimoAcceso: string | null;
+}
+
+export interface RegistroBitacora {
+  id: number;
+  usuario: string;
+  entidad: string;
+  entidadId: string | null;
+  accion: string;
+  antes: Record<string, unknown> | null;
+  despues: Record<string, unknown> | null;
+  fecha: string;
+}
+
+export const NOMBRE_CALCULO: Record<TipoCalculo, string> = {
+  prenomina: 'Prenómina',
+  nomina: 'Nómina',
+  aguinaldo: 'Aguinaldo',
+  prima_vacacional: 'Prima vacacional',
+};
+
+export const NOMBRE_ESTADO_PERIODO: Record<EstadoPeriodo, string> = {
+  captura: 'En captura',
+  prenomina: 'Prenómina calculada',
+  nomina: 'Nómina calculada',
+  cerrado: 'Cerrada',
+};

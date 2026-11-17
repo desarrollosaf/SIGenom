@@ -1,0 +1,157 @@
+<div [class.pagina]="!incrustado()">
+  @if (!incrustado()) {
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Quincena · {{ contexto.nombreNomina() }}</p>
+      <h1 class="titulo">Captura quincenal</h1>
+      <p class="apagado">
+        @if (contexto.periodo(); as p) {
+          {{ p.nombre }}. Lo que se capture aquí solo se paga o descuenta en esta quincena.
+        } @else {
+          No hay quincena abierta.
+        }
+      </p>
+    </div>
+  </header>
+  }
+
+  @if (!contexto.periodo()) {
+    <div class="tarjeta vacio">
+      <p class="titulo-chico">Abre una quincena para capturar</p>
+      <a class="boton primario" routerLink="/quincenas">Ir a quincenas</a>
+    </div>
+  } @else {
+    @if (!contexto.abierto()) {
+      <p class="nota ambar" style="margin-bottom: 16px">Esta quincena ya está cerrada: solo se puede consultar.</p>
+    }
+
+    <div class="arriba">
+      <!-- Captura manual -->
+      <section class="tarjeta con-relleno">
+        <h2 class="titulo-chico">Capturar</h2>
+        @if (puede()) {
+          <div class="formulario uno" style="margin-top: 12px">
+            <div>
+              <label class="etiqueta">Empleado</label>
+              @if (empleado(); as e) {
+                <div class="elegido">
+                  <div>
+                    <strong>{{ e.nombre }}</strong>
+                    <span class="mono tenue chico">{{ e.curp }} · N{{ e.nivel }}-{{ e.rango }}</span>
+                  </div>
+                  <button type="button" class="boton chico" (click)="empleado.set(null)">Otro empleado</button>
+                </div>
+              } @else {
+                <app-buscar-empleado [tipoNomina]="contexto.tipoNomina()" (elegido)="elegir($event)" />
+              }
+            </div>
+            <form class="linea" (ngSubmit)="agregar()">
+              <div class="crece">
+                <label class="etiqueta" for="concepto">Clave</label>
+                <select id="concepto" name="concepto" class="campo" [(ngModel)]="nueva.conceptoId" [disabled]="!empleado()">
+                  <option [ngValue]="null" disabled>Elige la clave…</option>
+                  <optgroup label="Percepciones">
+                    @for (c of capturables(); track c.id) {
+                      @if (c.naturaleza === 'P') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}
+                    }
+                  </optgroup>
+                  <optgroup label="Deducciones">
+                    @for (c of capturables(); track c.id) {
+                      @if (c.naturaleza === 'D') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}
+                    }
+                  </optgroup>
+                </select>
+              </div>
+              <div>
+                <label class="etiqueta" for="importe">Importe</label>
+                <input #importe id="importe" name="importe" class="campo cifra" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nueva.importe" [disabled]="!empleado()" />
+              </div>
+              <div class="crece">
+                <label class="etiqueta" for="ref">Referencia</label>
+                <input id="ref" name="ref" class="campo" placeholder="Opcional" [(ngModel)]="nueva.referencia" [disabled]="!empleado()" />
+              </div>
+              <button type="submit" class="boton primario" [disabled]="!empleado() || !nueva.conceptoId || !nueva.importe || guardando()">Agregar</button>
+            </form>
+            @if (delEmpleado().length) {
+              <div class="ya">
+                <p class="antetitulo">Ya capturado a esta persona</p>
+                @for (c of delEmpleado(); track c.id) {
+                  <span class="insignia sin-punto" [class.verde]="c.naturaleza === 'P'" [class.rojo]="c.naturaleza === 'D'">{{ c.clave }} · {{ c.importe | moneda }}</span>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="apagado chico" style="margin-top: 8px">Tu usuario solo puede consultar.</p>
+        }
+      </section>
+
+      <!-- Importación -->
+      <section class="tarjeta con-relleno">
+        <h2 class="titulo-chico">Importar archivo</h2>
+        <p class="apagado chico">CSV con <span class="mono">curp, clave, importe, referencia</span>. Sustituye a los traspasos de inasistencias, reintegros, caja de ahorro y comedor.</p>
+        @if (puede()) {
+          <div class="formulario uno" style="margin-top: 12px">
+            <select class="campo" [(ngModel)]="origenArchivo" aria-label="Origen">
+              @for (o of origenes(); track o.clave) {
+                @if (o.clave !== 'captura') {<option [value]="o.clave">{{ o.nombre }}</option>}
+              }
+            </select>
+            <div class="linea">
+              <input class="campo archivo crece" type="file" accept=".csv,.txt" (change)="elegirArchivo($event)" aria-label="Archivo CSV" />
+              <button type="button" class="boton" [disabled]="!archivo || guardando()" (click)="importar()"><app-icono nombre="subir" [tamano]="15" />Importar</button>
+            </div>
+          </div>
+        }
+        @if (resultado(); as r) {
+          <div class="nota" [class.verde]="!r.errores.length" [class.ambar]="r.errores.length" style="margin-top: 12px; flex-direction: column">
+            <strong>{{ r.importadas }} importados · {{ r.errores.length }} con error</strong>
+            @for (e of r.errores.slice(0, 8); track e.renglon) {
+              <span class="chico">Renglón {{ e.renglon }}: {{ e.error }} <span class="mono tenue">{{ e.texto }}</span></span>
+            }
+            @if (r.errores.length > 8) {<span class="chico tenue">y {{ r.errores.length - 8 }} más…</span>}
+          </div>
+        }
+      </section>
+    </div>
+
+    <!-- Lo capturado -->
+    <section class="seccion">
+      <div class="cabeza-seccion">
+        <h2 class="titulo-chico">Capturado en la quincena</h2>
+        <div class="resumen chico">
+          <span>{{ visibles().length }} movimientos · {{ totales().personas }} personas</span>
+          <span class="cifra">P {{ totales().p | moneda }}</span>
+          <span class="cifra">D {{ totales().d | moneda }}</span>
+        </div>
+      </div>
+      <div class="barra-filtros">
+        <input class="campo buscar" type="search" placeholder="Filtrar por nombre, CURP o clave" [ngModel]="filtro()" (ngModelChange)="filtro.set($event)" />
+        <select class="campo" [ngModel]="filtroOrigen()" (ngModelChange)="filtroOrigen.set($event)" aria-label="Origen">
+          <option value="">Todos los orígenes</option>
+          @for (o of origenes(); track o.clave) {<option [value]="o.clave">{{ nombreOrigen().get(o.clave) }}</option>}
+        </select>
+      </div>
+      <div class="tabla-marco">
+        <table class="tabla">
+          <thead><tr><th>Empleado</th><th class="min">Clave</th><th>Concepto</th><th class="der">Importe</th><th>Origen</th><th>Registró</th><th class="min"></th></tr></thead>
+          <tbody>
+            @for (c of visibles(); track c.id) {
+              <tr>
+                <td><a class="principal" style="text-decoration: none" [routerLink]="['/empleados', c.empleadoId]">{{ c.nombre }}</a><span class="sub">{{ c.curp }}</span></td>
+                <td class="mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
+                <td>{{ c.concepto }}@if (c.referencia) {<span class="sub" style="font-family: var(--sans)">{{ c.referencia }}</span>}</td>
+                <td class="der cifra" [class.negativo]="c.naturaleza === 'D'">{{ c.naturaleza === 'D' ? '−' : '' }}{{ c.importe | moneda }}</td>
+                <td><span class="insignia sin-punto">{{ nombreOrigen().get(c.origen) ?? c.origen }}</span></td>
+                <td class="mono tenue chico">{{ c.registradoPor }}<span class="sub">{{ c.creadoEl | fecha: true }}</span></td>
+                <td>@if (puede()) {<button type="button" class="boton-icono" (click)="borrar(c)" aria-label="Borrar"><app-icono nombre="basura" [tamano]="16" /></button>}</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="7"><div class="vacio"><p class="titulo-chico">Nada capturado todavía</p><p>Los movimientos de la quincena aparecerán aquí.</p></div></td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+</div>

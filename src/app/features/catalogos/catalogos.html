@@ -1,0 +1,99 @@
+<div class="pagina">
+  @if (!actual()) {
+    <header class="encabezado">
+      <div>
+        <p class="antetitulo">Configuración</p>
+        <h1 class="titulo">Catálogos</h1>
+        <p class="apagado">Lo que el cálculo necesita: tarifas, tabulador, claves y parámetros.</p>
+      </div>
+    </header>
+    <div class="rejilla">
+      @for (d of definiciones(); track d.clave) {
+        <a class="tarjeta con-relleno catalogo" [routerLink]="['/catalogos', d.clave]">
+          <div class="cabeza-seccion">
+            <h2 class="titulo-chico">{{ d.titulo }}</h2>
+            <span class="mono tenue">{{ d.total }}</span>
+          </div>
+          <p class="apagado chico">{{ d.descripcion }}</p>
+          <p class="tenue chico mono">{{ d.legado }}</p>
+        </a>
+      }
+    </div>
+  } @else {
+    @let d = actual()!;
+    <a class="boton fantasma chico" routerLink="/catalogos"><app-icono nombre="atras" [tamano]="15" />Catálogos</a>
+    <header class="encabezado" style="margin-top: 12px">
+      <div>
+        <p class="antetitulo">Configuración{{ d.porTipoNomina ? ' · ' + contexto.nombreNomina() : '' }}</p>
+        <h1 class="titulo">{{ d.titulo }}</h1>
+        <p class="apagado">{{ d.descripcion }} <span class="tenue mono chico">· {{ d.legado }}</span></p>
+      </div>
+      @if (!d.soloEdicion) {
+        <button type="button" class="boton primario" (click)="abrir()"><app-icono nombre="mas" [tamano]="16" />Agregar</button>
+      }
+    </header>
+
+    <div class="barra-filtros">
+      <input class="campo buscar" type="search" placeholder="Filtrar" [ngModel]="filtro()" (ngModelChange)="filtro.set($event)" />
+      <span class="tenue chico">{{ visibles().length }} de {{ filas().length }}</span>
+    </div>
+
+    <div class="tabla-marco">
+      <table class="tabla">
+        <thead>
+          <tr>@for (c of columnas(); track c.clave) {<th [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'">{{ c.titulo }}</th>}</tr>
+        </thead>
+        <tbody>
+          @for (f of visibles(); track $index) {
+            <tr class="clic" (click)="abrir(f)" tabindex="0" (keydown.enter)="abrir(f)">
+              @for (c of columnas(); track c.clave) {
+                <td [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.cifra]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.tenue]="c.tipo === 'booleano' && !f[c.clave]">{{ mostrar(c, f) }}</td>
+              }
+            </tr>
+          } @empty {
+            <tr><td [attr.colspan]="columnas().length"><div class="vacio"><p class="titulo-chico">Sin registros</p></div></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <app-cajon [abierto]="!!editando()" [titulo]="esNuevo() ? 'Nuevo registro' : 'Editar registro'" [antetitulo]="d.titulo" (cerrar)="editando.set(null)">
+      @if (editando(); as e) {
+        <div class="formulario uno">
+          @for (c of d.campos; track c.clave) {
+            @if (!d.soloEdicion || c.clave === 'valor' || !c.llave) {
+              <div>
+                @if (c.tipo === 'booleano') {
+                  <label class="casilla"><input type="checkbox" [(ngModel)]="e[c.clave]" />{{ c.titulo }}</label>
+                } @else {
+                  <label class="etiqueta">{{ c.titulo }}{{ c.requerido ? '' : ' (opcional)' }}</label>
+                  @if (c.tipo === 'opcion') {
+                    <select class="campo" [(ngModel)]="e[c.clave]">
+                      @for (o of opciones(c); track o.valor) {<option [value]="o.valor">{{ o.etiqueta }}</option>}
+                    </select>
+                  } @else {
+                    <input
+                      class="campo"
+                      [class.cifra]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'"
+                      [type]="tipoInput(c)"
+                      [step]="c.tipo === 'entero' ? 1 : 'any'"
+                      [attr.maxlength]="c.max ?? null"
+                      [readonly]="(c.llave && !esNuevo()) || (d.soloEdicion && c.clave !== 'valor')"
+                      [(ngModel)]="e[c.clave]"
+                    />
+                  }
+                }
+                @if (c.ayuda) {<p class="ayuda">{{ c.ayuda }}</p>}
+              </div>
+            }
+          }
+        </div>
+      }
+      <ng-container pie>
+        @if (!esNuevo() && !d.soloEdicion) {<button type="button" class="boton peligro" style="margin-right: auto" (click)="borrar()">Eliminar</button>}
+        <button type="button" class="boton" (click)="editando.set(null)">Cancelar</button>
+        <button type="button" class="boton primario" [disabled]="guardando()" (click)="guardar()">Guardar</button>
+      </ng-container>
+    </app-cajon>
+  }
+</div>

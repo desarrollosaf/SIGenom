@@ -1,0 +1,179 @@
+.ancha {
+  max-width: 1400px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--linea);
+  border-top: 3px solid var(--acento);
+  border-radius: var(--radio);
+  background: var(--superficie);
+
+  .t {
+    color: var(--apagado);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .v {
+    font-family: var(--mono);
+    font-size: 1.15rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .s {
+    color: var(--tenue);
+    font-size: 0.75rem;
+  }
+
+  &.falta {
+    border-top-color: var(--rojo);
+
+    .v {
+      color: var(--rojo);
+    }
+  }
+
+  &.sobra {
+    border-top-color: var(--azul);
+
+    .v {
+      color: var(--azul);
+    }
+  }
+}
+
+.simulacion {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+
+  > span {
+    flex: 1 1 300px;
+  }
+}
+
+.segmento {
+  display: inline-flex;
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--radio-chico);
+  overflow: hidden;
+
+  button {
+    padding: 6px 12px;
+    border: 0;
+    background: var(--superficie);
+    color: var(--apagado);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+
+    & + button {
+      border-left: 1px solid var(--linea-fuerte);
+    }
+
+    &.on {
+      background: var(--acento);
+      color: var(--sobre-acento);
+    }
+  }
+}
+
+.alto {
+  max-height: 64vh;
+}
+
+.marca {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--acento);
+  cursor: pointer;
+}
+
+tr.cambiado td {
+  background: var(--ambar-suave);
+}
+
+tr.elegido td {
+  background: var(--acento-suave);
+}
+
+.falta-t {
+  color: var(--rojo);
+}
+
+.sobra-t {
+  color: var(--azul);
+}
+
+a.principal {
+  color: var(--tinta);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--acento);
+  }
+}
+
+.barra-celda {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.barra-prop {
+  flex: 1;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--fondo-2);
+  overflow: hidden;
+
+  span {
+    display: block;
+    height: 100%;
+    background: var(--acento);
+  }
+}
+
+tr.detalle td {
+  background: var(--superficie-2);
+}
+
+.persona-grupo {
+  display: inline-block;
+  margin: 2px 14px 2px 0;
+  font-size: 0.8125rem;
+}
+
+.dos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 20px;
+}
+
+.como {
+  display: grid;
+  gap: 10px;
+  max-width: 80ch;
+
+  p {
+    color: var(--apagado);
+  }
+
+  strong {
+    color: var(--tinta);
+  }
+}
