@@ -20,7 +20,9 @@
     "migrate:status": "sequelize-cli db:migrate:status",
     "seed": "sequelize-cli db:seed:all",
     "seed:undo": "sequelize-cli db:seed:undo:all",
-    "importar:cata-pd": "node src/database/scripts/importar-cata-pd.js"
+    "importar:cata-pd": "node src/database/scripts/importar-cata-pd.js",
+    "importar:txt-legado": "node src/database/scripts/importar-txt-legado.js",
+    "comparar:legado": "node src/database/scripts/comparar-legado.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",

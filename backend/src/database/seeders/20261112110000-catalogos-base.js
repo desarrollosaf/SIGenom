@@ -77,11 +77,18 @@ const MOTIVOS = [
  */
 const CONCEPTOS = [
   // Comprobante: 001/0102, 012/0105, 014/0301, 017/0107. Cotizan ISSEMYM 001, 012 y 017 (las cuotas
-  // del comprobante salen exactas sobre esa suma); la prima de permanencia no.
+  // del comprobante salen exactas sobre esa suma); la prima de permanencia no, y en los recibos 2025
+  // tampoco grava ISR.
   [1, 'SUELDO BASE', 'SUELDO BASE', 'P', 'F', true, 1, '1131', 'sueldo', 102],
   [12, 'GRATIFICACI', 'GRATIFICACION', 'P', 'F', true, 1, '1341', 'compensacion', 105],
-  [14, 'PRIMA PERM', 'PRIMA PERM SERV', 'P', 'F', true, 0, '1311', null, 301],
+  [11, 'COMPENSACION', 'COMPENSACION', 'P', 'F', true, 1, null, null, 104],
+  [14, 'PRIMA PERM', 'PRIMA PERM SERV', 'P', 'F', false, 0, '1311', null, 301],
   [17, 'GRAT EXTRA', 'GRATIFICACION EXTRA', 'P', 'F', true, 1, '1321', null, 107],
+  // Comprobante de la 2a quincena de febrero 2025: 011/0104, 027/(sin GEM), 034/0512, 047/0107, 516/5565.
+  // Gravado y cotización deducidos de los recibos 2025.
+  [27, 'TIEMPO EXTRA', 'TIEMPO EXTRAORD', 'P', 'E', true, 0, null, null, null],
+  [34, 'DESPENSA', 'DESPENSA', 'P', 'F', false, 1, null, null, 512],
+  [47, 'GRATIF ESP', 'GRATIF ESPECIAL', 'P', 'E', false, 0, null, null, 107],
   // 1CAL-A-P.W guarda la prima vacacional en la 37 y el aguinaldo en la 38.
   [37, 'PRIMA VAC', 'PRIMA VACACIONAL', 'P', 'E', true, 0, '1322', 'prima_vacacional', null],
   [38, 'AGUINALDO', 'AGUINALDO', 'P', 'E', true, 0, '1323', 'aguinaldo', null],
@@ -91,6 +98,7 @@ const CONCEPTOS = [
   [502, 'PENSION ALI', 'PENSION ALIMENTICIA', 'D', 'F', false, 0, '2119', null, null],
   [511, 'FONDO SSR', 'C FONDO SIST SOL REP', 'D', 'F', false, 0, '2118', 'issemym_pension', 5541],
   [512, 'SERV SALUD', 'C SERVICIOS DE SALUD', 'D', 'F', false, 0, '2118', 'issemym_salud', 5540],
+  [516, 'CRED CONSUMO', 'CREDITOS AL CONSUMO', 'D', 'F', false, 0, '2119', null, 5565],
   [522, 'INFONACOT', 'INFONACOT', 'D', 'F', false, 0, '2119', null, 5414],
   // COMP-ISS.W: 531 estancia ISSEMYM, 550 ahorro SCI (descripción tomada del comentario del programa).
   [531, 'ESTANCIA', 'ESTANCIA ISSEMYM', 'D', 'F', false, 0, '2118', null, null],

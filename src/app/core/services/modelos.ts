@@ -2,7 +2,8 @@
 
 export type EstadoEmpleado = 'activo' | 'permiso' | 'baja';
 export type EstadoPeriodo = 'captura' | 'prenomina' | 'nomina' | 'cerrado';
-export type TipoCalculo = 'prenomina' | 'nomina' | 'aguinaldo' | 'prima_vacacional';
+/** `legado`: recibos tal como los pagó el sistema anterior (importar:txt-legado); no se recalcula. */
+export type TipoCalculo = 'prenomina' | 'nomina' | 'aguinaldo' | 'prima_vacacional' | 'legado';
 export type EstadoCalculo = 'en_cola' | 'procesando' | 'terminado' | 'error' | 'reemplazado';
 
 export interface TipoNomina {
@@ -378,6 +379,7 @@ export const NOMBRE_CALCULO: Record<TipoCalculo, string> = {
   nomina: 'Nómina',
   aguinaldo: 'Aguinaldo',
   prima_vacacional: 'Prima vacacional',
+  legado: 'Pagado (sistema anterior)',
 };
 
 export const NOMBRE_ESTADO_PERIODO: Record<EstadoPeriodo, string> = {

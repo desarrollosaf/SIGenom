@@ -4,7 +4,8 @@ import { dinero, decimal } from './columnas';
 import { Empleado } from './personal.models';
 
 export type EstadoPeriodo = 'captura' | 'prenomina' | 'nomina' | 'cerrado';
-export type TipoCalculo = 'prenomina' | 'nomina' | 'aguinaldo' | 'prima_vacacional';
+/** `legado`: recibos tal como los pagó el sistema anterior (importar:txt-legado); no se recalcula. */
+export type TipoCalculo = 'prenomina' | 'nomina' | 'aguinaldo' | 'prima_vacacional' | 'legado';
 export type EstadoCalculo = 'en_cola' | 'procesando' | 'terminado' | 'error' | 'reemplazado';
 
 @Table({ tableName: 'periodos', underscored: true, timestamps: true })
