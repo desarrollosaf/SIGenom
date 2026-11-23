@@ -5,9 +5,11 @@ import { ApiService, mensajeDeError } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
-import type { Captura, EmpleadoResumen } from '../../core/services/modelos';
+import type { Captura, ConceptoOpcion, EmpleadoResumen } from '../../core/services/modelos';
 import { BuscarEmpleado } from '../../shared/buscar-empleado/buscar-empleado';
+import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO } from '../../shared/formato';
+import { MarcasClave } from '../../shared/marcas-clave/marcas-clave';
 import { Icono } from '../../shared/icono/icono';
 
 /**
@@ -16,7 +18,7 @@ import { Icono } from '../../shared/icono/icono';
  */
 @Component({
   selector: 'app-captura',
-  imports: [FormsModule, RouterLink, Icono, BuscarEmpleado, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, BuscarEmpleado, Cajon, MarcasClave, ...FORMATO],
   templateUrl: './captura.html',
   styleUrl: './captura.scss',
 })
@@ -36,9 +38,11 @@ export class CapturaPagina {
   protected readonly filtro = signal('');
   protected readonly filtroOrigen = signal('');
   protected readonly guardando = signal(false);
+  /** Captura a la que se le cambian las marcas. */
+  protected readonly marcando = signal<{ captura: Captura; gravaIsr: boolean | null; timbra: boolean | null } | null>(null);
   protected readonly resultado = signal<{ importadas: number; errores: { renglon: number; texto: string; error: string }[] } | null>(null);
 
-  protected nueva = { conceptoId: null as number | null, importe: null as number | null, referencia: '' };
+  protected nueva = this.vacia();
   protected origenArchivo = 'inasistencias';
   protected archivo: File | null = null;
 
@@ -84,7 +88,7 @@ export class CapturaPagina {
 
   protected elegir(e: EmpleadoResumen): void {
     this.empleado.set(e);
-    this.nueva = { conceptoId: this.nueva.conceptoId, importe: null, referencia: '' };
+    this.nueva = this.vacia(this.nueva.conceptoId);
     setTimeout(() => document.getElementById('concepto')?.focus());
   }
 
@@ -94,11 +98,11 @@ export class CapturaPagina {
     if (!p || !e || !this.nueva.conceptoId || !this.nueva.importe || this.guardando()) return;
     this.guardando.set(true);
     this.api
-      .capturar(p.id, { empleadoId: e.id, conceptoId: this.nueva.conceptoId, importe: this.nueva.importe, referencia: this.nueva.referencia || undefined })
+      .capturar(p.id, { empleadoId: e.id, conceptoId: this.nueva.conceptoId, importe: this.nueva.importe, referencia: this.nueva.referencia || undefined, gravaIsr: this.nueva.gravaIsr, timbra: this.nueva.timbra })
       .subscribe({
         next: () => {
           this.guardando.set(false);
-          this.nueva = { conceptoId: this.nueva.conceptoId, importe: null, referencia: '' };
+          this.nueva = this.vacia(this.nueva.conceptoId);
           this.cargar(p.id);
           this.campoImporte()?.nativeElement.focus();
         },
@@ -107,6 +111,37 @@ export class CapturaPagina {
           this.avisos.error(mensajeDeError(err));
         },
       });
+  }
+
+  private vacia(conceptoId: number | null = null) {
+    return { conceptoId, importe: null as number | null, referencia: '', gravaIsr: null as boolean | null, timbra: null as boolean | null };
+  }
+
+  /** Lo que aplica a una captura ya hecha, con su marca o la del catálogo. */
+  protected clave(id: number | null): ConceptoOpcion | null {
+    return this.contexto.conceptos().find((c) => c.id === id) ?? null;
+  }
+
+  protected editarMarcas(c: Captura): void {
+    this.marcando.set({ captura: c, gravaIsr: c.gravaIsr, timbra: c.timbra });
+  }
+
+  protected guardarMarcas(): void {
+    const m = this.marcando();
+    if (!m || this.guardando()) return;
+    this.guardando.set(true);
+    this.api.marcarCaptura(m.captura.id, { gravaIsr: m.gravaIsr, timbra: m.timbra }).subscribe({
+      next: () => {
+        this.guardando.set(false);
+        this.marcando.set(null);
+        this.avisos.exito('Guardado. Vuelve a calcular para que se refleje.');
+        this.cargar(this.contexto.periodo()!.id);
+      },
+      error: (e) => {
+        this.guardando.set(false);
+        this.avisos.error(mensajeDeError(e));
+      },
+    });
   }
 
   protected async borrar(c: Captura): Promise<void> {

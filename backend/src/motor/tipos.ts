@@ -81,6 +81,9 @@ export interface TablasMotor {
 export interface ImporteConcepto {
   conceptoId: number;
   importe: number;
+  /** Solo para este movimiento; sin valor, como el concepto. */
+  gravaIsr?: boolean | null;
+  timbra?: boolean | null;
 }
 
 export interface DescuentoPlazoMotor {
@@ -117,6 +120,8 @@ export interface LineaRecibo {
   gravadoIsr: number;
   partida: string | null;
   timbra: boolean;
+  /** Porción que integra la base ISSEMYM (0 a 1). */
+  factorIssemym: number;
 }
 
 export interface ResultadoRecibo {

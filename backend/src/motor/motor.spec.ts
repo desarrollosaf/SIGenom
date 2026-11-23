@@ -239,6 +239,34 @@ describe('como el sistema anterior en 2025', () => {
   });
 });
 
+describe('marcas por movimiento', () => {
+  const base = { empleadoId: 1, sueldoMensual: 12000, compensacionMensual: 0, dias: 15, fijos: [], descuentosPlazo: [] };
+  const con = (marcas: { gravaIsr?: boolean | null; timbra?: boolean | null }) =>
+    calcularRecibo({ ...base, capturas: [{ conceptoId: 5, importe: 500 }, { conceptoId: 5, importe: 300, ...marcas }] }, tablas);
+
+  it('sin marca queda como el concepto, en una sola línea', () => {
+    const r = con({ gravaIsr: null, timbra: null });
+    expect(r.baseIsr).toBe(6000);
+    expect(r.lineas.filter((l) => l.conceptoId === 5).map((l) => [l.importe, l.timbra])).toEqual([[800, true]]);
+  });
+  it('grava solo ese movimiento y recalcula el ISR', () => {
+    const r = con({ gravaIsr: true });
+    expect(r.baseIsr).toBe(6300);
+    expect(r.isrCausado).toBe(570.48);
+    expect(r.lineas.find((l) => l.conceptoId === 5)?.gravadoIsr).toBe(300);
+  });
+  it('no timbrar no cambia el ISR y separa la línea', () => {
+    const r = con({ timbra: false });
+    expect(r.baseIsr).toBe(6000);
+    expect(r.lineas.filter((l) => l.conceptoId === 5).map((l) => [l.importe, l.timbra])).toEqual([[500, true], [300, false]]);
+  });
+  it('una clave fija también puede no gravar, y un negativo corrige la línea que ya está', () => {
+    expect(calcularRecibo({ ...base, fijos: [{ conceptoId: 5, importe: 100, gravaIsr: true }], capturas: [] }, tablas).baseIsr).toBe(6100);
+    const r = calcularRecibo({ ...base, capturas: [{ conceptoId: 70, importe: 500, timbra: false }, { conceptoId: 70, importe: -200 }] }, tablas);
+    expect(r.lineas.filter((l) => l.conceptoId === 70).map((l) => [l.importe, l.timbra])).toEqual([[300, false]]);
+  });
+});
+
 describe('leerTablaRang', () => {
   it('lee el CSV de Excel y omite el nivel 0', () => {
     const enc = 'NIVEL ;IMP-NIVEL;IMP-RAN-1;IMP-RAN-2;IMP-RAN-3;IMP-RAN-4;IMP-RAN-5;IMP-COMP-1;IMP-COMP-2;IMP-COMP-3;IMP-COMP-4;IMP-COMP-5';

@@ -120,7 +120,7 @@ export class CalculoEjecutor {
           const idPorEmpleado = new Map(creados.map((c) => [c.empleadoId, c.id]));
           await this.conceptosRecibo.bulkCreate(
             filas.flatMap(({ empleado, resultado }) =>
-              resultado.lineas.map((l) => ({ reciboId: idPorEmpleado.get(empleado.id), ...l })),
+              resultado.lineas.map(({ factorIssemym: _, ...l }) => ({ reciboId: idPorEmpleado.get(empleado.id), ...l })),
             ),
             { transaction },
           );

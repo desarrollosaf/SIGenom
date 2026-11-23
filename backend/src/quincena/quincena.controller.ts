@@ -48,6 +48,24 @@ class CapturaDto {
   @IsInt() conceptoId: number;
   @IsNumber({ maxDecimalPlaces: 2 }) importe: number;
   @IsOptional() @IsString() @MaxLength(80) referencia?: string;
+  /** Solo para este movimiento; null = como la quincena o el catálogo. */
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+}
+
+class MarcasDto {
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+}
+
+class ProbarCapturaDto {
+  @IsInt() empleadoId: number;
+  @IsInt() conceptoId: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) importe: number;
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+  /** Como clave fija (sustituye a la que ya tenga) en lugar de captura. */
+  @IsOptional() @IsBoolean() fija?: boolean;
 }
 
 class AjusteDto {
@@ -193,6 +211,20 @@ export class QuincenaController {
   ) {
     if (!archivo) throw new BadRequestException('Adjunta el archivo CSV.');
     return this.capturas.importar(id, decodificar(archivo.buffer), origen ?? 'otro', u.usuario);
+  }
+
+  /** Cómo cambiaría el recibo con ese movimiento, sin guardarlo. */
+  @Post('periodos/:id/capturas/probar')
+  @HttpCode(HttpStatus.OK)
+  probarCaptura(@Param('id', ParseIntPipe) id: number, @Body() dto: ProbarCapturaDto) {
+    return this.ajusteNeto.impacto(id, dto);
+  }
+
+  @Patch('capturas/:id')
+  @Roles(...PUEDEN_OPERAR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  marcarCaptura(@Param('id', ParseIntPipe) id: number, @Body() dto: MarcasDto, @Usuario() u: UsuarioActual) {
+    return this.capturas.marcar(id, { gravaIsr: dto.gravaIsr ?? null, timbra: dto.timbra ?? null }, u.usuario);
   }
 
   @Delete('capturas/:id')

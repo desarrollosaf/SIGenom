@@ -67,6 +67,13 @@ export class Captura extends Model {
   @Column(dinero('importe'))
   declare importe: number;
 
+  /** null = como el ajuste de la quincena o el catálogo. */
+  @Column(DataType.BOOLEAN)
+  declare gravaIsr: boolean | null;
+
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean | null;
+
   @Column(DataType.STRING(20))
   declare origen: string;
 

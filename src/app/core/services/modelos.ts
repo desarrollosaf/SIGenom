@@ -29,6 +29,13 @@ export interface ConceptoOpcion {
   calculado: string | null;
   gravaIsr: boolean;
   timbra: boolean;
+  cotizaIssemym: boolean;
+}
+
+/** El recibo de una persona antes y después de un movimiento que todavía no se guarda. */
+export interface ImpactoMovimiento {
+  antes: { baseIsr: number; isr: number; issemym: number; neto: number };
+  despues: { baseIsr: number; isr: number; issemym: number; neto: number };
 }
 
 /** Una clave que en una quincena grava o se timbra distinto del catálogo (null = como el catálogo). */
@@ -146,7 +153,7 @@ export interface FichaEmpleado extends EmpleadoResumen {
   datosPersonales: DatosPersonales | null;
   tabulador: { vigencia: string; sueldoMensual: number; compensacionMensual: number; gratificacionMensual: number } | null;
   sucursal: { sucursal: number; tipo: string } | null;
-  fijos: { id: number; importe: number; concepto: ConceptoCorto }[];
+  fijos: { id: number; importe: number; gravaIsr: boolean | null; timbra: boolean | null; concepto: ConceptoCorto }[];
   descuentosPlazo: {
     id: number;
     importeQuincenal: number;
@@ -174,7 +181,7 @@ export type OrigenClave = 'calculado' | 'fija' | 'plazo' | 'captura';
 export interface QuincenaEmpleado {
   periodo: { id: number | null; nombre: string; estado: EstadoPeriodo | null };
   dias: number;
-  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; origenes: OrigenClave[] }[];
+  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; timbra: boolean; factorIssemym: number; origenes: OrigenClave[] }[];
   baseIsr: number;
   baseIssemym: number;
   isrCausado: number;
@@ -284,6 +291,11 @@ export interface Captura {
   concepto: string;
   naturaleza: 'P' | 'D';
   importe: number;
+  /** null = como la quincena o el catálogo. */
+  gravaIsr: boolean | null;
+  timbra: boolean | null;
+  /** La calcula el sistema (la captura es solo una diferencia): sus marcas no se cambian aquí. */
+  calculado: boolean;
   origen: string;
   referencia: string | null;
   registradoPor: string;
@@ -448,6 +460,9 @@ export interface RegistroBitacora {
   antes: Record<string, unknown> | null;
   despues: Record<string, unknown> | null;
   fecha: string;
+  persona: string | null;
+  clave: string | null;
+  quincena: string | null;
 }
 
 export const NOMBRE_CALCULO: Record<TipoCalculo, string> = {

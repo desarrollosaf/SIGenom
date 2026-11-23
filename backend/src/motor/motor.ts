@@ -20,6 +20,7 @@ interface Linea {
   concepto: ConceptoMotor;
   centavos: number;
   gravadoCentavos: number;
+  timbra: boolean;
 }
 
 /**
@@ -42,16 +43,26 @@ export function calcularRecibo(
   const lineas: Linea[] = [];
   const observaciones: string[] = [];
 
-  const agregar = (concepto: ConceptoMotor | undefined, centavos: number, gravado?: number) => {
+  const agregar = (
+    concepto: ConceptoMotor | undefined,
+    centavos: number,
+    gravado?: number,
+    marcas: { gravaIsr?: boolean | null; timbra?: boolean | null } = {},
+  ) => {
     if (!concepto || centavos === 0) return;
-    const existente = lineas.find((l) => l.concepto.id === concepto.id);
+    const timbra = marcas.timbra ?? concepto.timbra;
+    // Lo que se timbra y lo que no, de una misma clave, van en líneas separadas. Un importe negativo
+    // corrige a la línea que ya está, aunque tenga otra marca: no se deja una línea en negativo.
+    const existente =
+      lineas.find((l) => l.concepto.id === concepto.id && l.timbra === timbra) ??
+      (centavos < 0 ? lineas.find((l) => l.concepto.id === concepto.id) : undefined);
     const gravadoCentavos =
-      gravado ?? (concepto.naturaleza === 'P' && concepto.gravaIsr ? centavos : 0);
+      gravado ?? (concepto.naturaleza === 'P' && (marcas.gravaIsr ?? concepto.gravaIsr) ? centavos : 0);
     if (existente) {
       existente.centavos += centavos;
       existente.gravadoCentavos += gravadoCentavos;
     } else {
-      lineas.push({ concepto, centavos, gravadoCentavos });
+      lineas.push({ concepto, centavos, gravadoCentavos, timbra });
     }
   };
   const calculado = (clave: ConceptoCalculado) => tablas.calculados[clave];
@@ -82,7 +93,7 @@ export function calcularRecibo(
       if (!concepto) continue;
       // Las percepciones fijas se pagan por día trabajado; las deducciones fijas van completas.
       const factor = concepto.naturaleza === 'P' ? proporcion : 1;
-      agregar(concepto, Math.round(aCentavos(fijo.importe) * factor));
+      agregar(concepto, Math.round(aCentavos(fijo.importe) * factor), undefined, fijo);
     }
   } else {
     const anual = Math.max(0, Math.min(empleado.proporcionAnual ?? 1, 1));
@@ -96,7 +107,7 @@ export function calcularRecibo(
   }
 
   for (const captura of empleado.capturas) {
-    agregar(porId(captura.conceptoId), aCentavos(captura.importe));
+    agregar(porId(captura.conceptoId), aCentavos(captura.importe), undefined, captura);
   }
 
   // --- ISR -------------------------------------------------------------------------------------
@@ -190,7 +201,8 @@ export function calcularRecibo(
           importe: aPesos(l.centavos),
           gravadoIsr: aPesos(l.gravadoCentavos),
           partida: l.concepto.partida,
-          timbra: l.concepto.timbra,
+          timbra: l.timbra,
+          factorIssemym: l.concepto.factorIssemym,
         }),
       ),
     dias: modo === 'quincenal' ? dias : 0,

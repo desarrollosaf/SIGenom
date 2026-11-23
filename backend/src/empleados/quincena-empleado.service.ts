@@ -58,11 +58,11 @@ export class QuincenaEmpleadoService {
     if (periodo) await this.tablas.aplicarAjustes(tablas, periodo.id);
     const primeraQuincena = periodo ? ((await this.entrada.primerasQuincenas(periodo, [id])).get(id) ?? null) : null;
 
-    const fijos = empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe }));
+    const fijos = empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe, gravaIsr: f.gravaIsr, timbra: f.timbra }));
     const plazos = empleado.descuentosPlazo
       .filter((d) => d.quincenasPendientes === null || d.quincenasPendientes > 0)
       .map((d) => ({ conceptoId: d.conceptoId, importeQuincenal: d.importeQuincenal, porcentaje: d.porcentaje }));
-    const capturados = capturas.map((c) => ({ conceptoId: c.conceptoId, importe: c.importe }));
+    const capturados = capturas.map((c) => ({ conceptoId: c.conceptoId, importe: c.importe, gravaIsr: c.gravaIsr, timbra: c.timbra }));
 
     const resultado = calcularRecibo(
       {

@@ -4,14 +4,18 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { hoyMexico } from '../common/fechas';
-import { PUEDEN_OPERAR } from '../common/usuario-actual';
+import { BitacoraService } from '../common/bitacora.service';
+import { PUEDEN_OPERAR, Usuario, type UsuarioActual } from '../common/usuario-actual';
 import { QuincenaModule } from '../quincena/quincena.module';
 import { DispersionService } from './dispersion.service';
 
 @Controller('calculos/:id/dispersion')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DispersionController {
-  constructor(private readonly dispersion: DispersionService) {}
+  constructor(
+    private readonly dispersion: DispersionService,
+    private readonly bitacora: BitacoraService,
+  ) {}
 
   @Get()
   resumen(@Param('id', ParseIntPipe) id: number) {
@@ -23,11 +27,13 @@ export class DispersionController {
   async archivo(
     @Param('id', ParseIntPipe) id: number,
     @Res() res: Response,
+    @Usuario() u: UsuarioActual,
     @Query('layout') layout = 'citibanamex',
     @Query('fecha') fecha?: string,
     @Query('secuencia') secuencia?: string,
   ) {
     const { nombre, contenido } = await this.dispersion.archivo(id, layout, fecha || hoyMexico(), Number(secuencia) || 1);
+    await this.bitacora.registrar({ usuario: u.usuario, entidad: 'calculo', entidadId: id, accion: 'genera_dispersion', despues: { archivo: nombre, layout, fecha: fecha || hoyMexico(), secuencia: Number(secuencia) || 1 } });
     res.setHeader('Content-Type', layout === 'csv' ? 'text/csv; charset=utf-8' : 'text/plain; charset=us-ascii');
     res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
     res.send(contenido);

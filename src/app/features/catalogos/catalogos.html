@@ -36,29 +36,33 @@
       }
     </header>
 
-    <div class="barra-filtros">
-      <input class="campo buscar" type="search" placeholder="Filtrar" [ngModel]="filtro()" (ngModelChange)="filtro.set($event)" />
-      <span class="tenue chico">{{ visibles().length }} de {{ filas().length }}</span>
-    </div>
+    @if (d.clave === 'tabulador') {
+      <app-tabulador-niveles [filas]="filas()" (editar)="abrir($event)" />
+    } @else {
+      <div class="barra-filtros">
+        <input class="campo buscar" type="search" placeholder="Filtrar" [ngModel]="filtro()" (ngModelChange)="filtro.set($event)" />
+        <span class="tenue chico">{{ visibles().length }} de {{ filas().length }}</span>
+      </div>
 
-    <div class="tabla-marco">
-      <table class="tabla">
-        <thead>
-          <tr>@for (c of columnas(); track c.clave) {<th [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'">{{ c.titulo }}</th>}</tr>
-        </thead>
-        <tbody>
-          @for (f of visibles(); track $index) {
-            <tr class="clic" (click)="abrir(f)" tabindex="0" (keydown.enter)="abrir(f)">
-              @for (c of columnas(); track c.clave) {
-                <td [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.cifra]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.tenue]="c.tipo === 'booleano' && !f[c.clave]">{{ mostrar(c, f) }}</td>
-              }
-            </tr>
-          } @empty {
-            <tr><td [attr.colspan]="columnas().length"><div class="vacio"><p class="titulo-chico">Sin registros</p></div></td></tr>
-          }
-        </tbody>
-      </table>
-    </div>
+      <div class="tabla-marco">
+        <table class="tabla">
+          <thead>
+            <tr>@for (c of columnas(); track c.clave) {<th [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'">{{ c.titulo }}</th>}</tr>
+          </thead>
+          <tbody>
+            @for (f of visibles(); track $index) {
+              <tr class="clic" (click)="abrir(f)" tabindex="0" (keydown.enter)="abrir(f)">
+                @for (c of columnas(); track c.clave) {
+                  <td [class.der]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.cifra]="c.tipo === 'dinero' || c.tipo === 'decimal' || c.tipo === 'entero'" [class.tenue]="c.tipo === 'booleano' && !f[c.clave]">{{ mostrar(c, f) }}</td>
+                }
+              </tr>
+            } @empty {
+              <tr><td [attr.colspan]="columnas().length"><div class="vacio"><p class="titulo-chico">Sin registros</p></div></td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
 
     <app-cajon [abierto]="importando()" [ancho]="true" titulo="Importar tabla-rang" [antetitulo]="d.titulo" (cerrar)="importando.set(false)">
       @if (importando()) {<app-importar-tabla-rang (guardada)="recargar()" />}

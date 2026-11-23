@@ -76,8 +76,8 @@ export class EntradaService {
           (permisosDe.get(empleado.id) ?? []).map((p) => ({ inicio: p.fechaInicio, fin: p.fechaFin })),
           tablas.parametros.diasQuincena,
         ),
-        fijos: empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe })),
-        capturas: (capturasDe.get(empleado.id) ?? []).map((c) => ({ conceptoId: c.conceptoId, importe: c.importe })),
+        fijos: empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe, gravaIsr: f.gravaIsr, timbra: f.timbra })),
+        capturas: (capturasDe.get(empleado.id) ?? []).map((c) => ({ conceptoId: c.conceptoId, importe: c.importe, gravaIsr: c.gravaIsr, timbra: c.timbra })),
         descuentosPlazo:
           modo === 'quincenal'
             ? empleado.descuentosPlazo

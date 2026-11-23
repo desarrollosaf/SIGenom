@@ -17,11 +17,13 @@ import {
 import { InjectModel } from '@nestjs/sequelize';
 import * as bcrypt from 'bcryptjs';
 import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { Op, WhereOptions } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BitacoraService } from '../common/bitacora.service';
+import { patron } from '../common/busqueda';
+import { nombreQuincena } from '../common/fechas';
 import { ROL_ADMINISTRADOR, ROLES, Usuario as UsuarioDecorador, type UsuarioActual } from '../common/usuario-actual';
 import { Bitacora } from '../database/models/personal.models';
 import { Usuario } from '../database/models/usuario.model';
@@ -75,12 +77,58 @@ export class UsuariosService {
     return vista(cuenta);
   }
 
-  async bitacoraListar(filtro: { entidad?: string; usuario?: string; desde?: number }) {
-    const where: WhereOptions<Bitacora> = {};
-    if (filtro.entidad) Object.assign(where, { entidad: { [Op.iLike]: `${filtro.entidad}%` } });
-    if (filtro.usuario) Object.assign(where, { usuario: filtro.usuario.toUpperCase() });
-    const filas = await this.registros.findAll({ where, order: [['id', 'DESC']], limit: 100, offset: filtro.desde ?? 0 });
-    return filas.map((b) => ({ id: b.id, usuario: b.usuario, entidad: b.entidad, entidadId: b.entidadId, accion: b.accion, antes: b.antes, despues: b.despues, fecha: b.createdAt }));
+  /**
+   * La bitácora con la persona, la clave y la quincena escritas, no solo sus números internos.
+   * `q` busca por nombre o CURP de la persona a la que se le hizo el movimiento.
+   */
+  async bitacoraListar(filtro: { entidad?: string; usuario?: string; q?: string; dia?: string; desde?: number }) {
+    const db = this.registros.sequelize!;
+    const q = filtro.q?.trim();
+    const replacements = {
+      entidad: filtro.entidad ? `${filtro.entidad}%` : null,
+      usuario: filtro.usuario?.trim() ? filtro.usuario.trim().toUpperCase() : null,
+      q: q || null,
+      patron: q ? patron(q) : '',
+      dia: filtro.dia && /^\d{4}-\d{2}-\d{2}$/.test(filtro.dia) ? filtro.dia : null,
+      desde: filtro.desde ?? 0,
+    };
+    const numero = (texto: string) => `CASE WHEN ${texto} ~ '^[0-9]{1,9}$' THEN (${texto})::int END`;
+    const empleado = `coalesce(CASE WHEN b.entidad = 'empleado' THEN ${numero('b.entidad_id')} END, ${numero("b.despues->>'empleadoId'")}, ${numero("b.antes->>'empleadoId'")})`;
+    const periodo = `coalesce(CASE WHEN b.entidad = 'periodo' THEN ${numero('b.entidad_id')} END, ${numero("b.despues->>'periodoId'")}, ${numero("b.antes->>'periodoId'")})`;
+    const concepto = `coalesce(${numero("b.despues->>'conceptoId'")}, ${numero("b.antes->>'conceptoId'")})`;
+    const filas = await db.query<{
+      id: number; usuario: string; entidad: string; entidad_id: string | null; accion: string; antes: Record<string, unknown> | null;
+      despues: Record<string, unknown> | null; created_at: Date; persona: string | null; clave: number | null; concepto: string | null;
+      tipo_nomina: string | null; anio: number | null; quincena: number | null;
+    }>(
+      `SELECT b.id, b.usuario, b.entidad, b.entidad_id, b.accion, b.antes, b.despues, b.created_at,
+              nullif(concat_ws(' ', e.apellido_paterno, e.apellido_materno, e.nombres), '') persona,
+              k.clave, k.descripcion concepto, p.tipo_nomina, p.anio, p.quincena
+       FROM bitacora b
+       LEFT JOIN empleados e ON e.id = ${empleado}
+       LEFT JOIN periodos p ON p.id = ${periodo}
+       LEFT JOIN conceptos k ON k.id = ${concepto}
+       WHERE (CAST(:entidad AS text) IS NULL OR b.entidad ILIKE :entidad)
+         AND (CAST(:usuario AS text) IS NULL OR b.usuario = :usuario)
+         AND (CAST(:dia AS date) IS NULL OR (b.created_at AT TIME ZONE 'America/Mexico_City')::date = :dia)
+         AND (CAST(:q AS text) IS NULL OR e.curp ILIKE :patron
+              OR sin_acentos(concat_ws(' ', e.apellido_paterno, e.apellido_materno, e.nombres)) LIKE :patron)
+       ORDER BY b.id DESC LIMIT 100 OFFSET :desde`,
+      { type: QueryTypes.SELECT, replacements },
+    );
+    return filas.map((b) => ({
+      id: b.id,
+      usuario: b.usuario,
+      entidad: b.entidad,
+      entidadId: b.entidad_id,
+      accion: b.accion,
+      antes: b.antes,
+      despues: b.despues,
+      fecha: b.created_at,
+      persona: b.persona,
+      clave: b.clave === null ? null : `${String(b.clave).padStart(3, '0')} ${b.concepto}`,
+      quincena: b.quincena === null || b.anio === null ? null : `${b.tipo_nomina} · ${nombreQuincena(b.anio, b.quincena)}`,
+    }));
   }
 }
 
@@ -108,8 +156,14 @@ export class UsuariosController {
   }
 
   @Get('bitacora')
-  bitacora(@Query('entidad') entidad?: string, @Query('usuario') usuario?: string, @Query('desde') desde?: string) {
-    return this.usuarios.bitacoraListar({ entidad, usuario, desde: Number(desde) || 0 });
+  bitacora(
+    @Query('entidad') entidad?: string,
+    @Query('usuario') usuario?: string,
+    @Query('q') q?: string,
+    @Query('dia') dia?: string,
+    @Query('desde') desde?: string,
+  ) {
+    return this.usuarios.bitacoraListar({ entidad, usuario, q, dia, desde: Math.max(0, Number(desde) || 0) });
   }
 }
 

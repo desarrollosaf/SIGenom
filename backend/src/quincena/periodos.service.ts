@@ -159,9 +159,12 @@ export class PeriodosService {
     const periodo = await this.abierto(id);
     const nomina = await this.calculos.findOne({ where: { periodoId: id, tipo: 'nomina', estado: 'terminado' } });
     if (!nomina) throw new BadRequestException('Primero calcula la nómina definitiva de la quincena.');
-    const posterior = await this.capturas.count({ where: { periodoId: id, createdAt: { [Op.gt]: nomina.iniciadoEl ?? nomina.createdAt } } });
+    const posterior = await this.capturas.count({ where: { periodoId: id, updatedAt: { [Op.gt]: nomina.iniciadoEl ?? nomina.createdAt } } });
     if (posterior > 0) {
-      throw new BadRequestException(`Hay ${posterior} capturas posteriores al último cálculo. Vuelve a calcular la nómina antes de cerrar.`);
+      throw new BadRequestException(`Hay ${posterior} capturas nuevas o modificadas después del último cálculo. Vuelve a calcular la nómina antes de cerrar.`);
+    }
+    if (await this.ajustes.count({ where: { periodoId: id, updatedAt: { [Op.gt]: nomina.iniciadoEl ?? nomina.createdAt } } })) {
+      throw new BadRequestException('Cambiaste ajustes de claves después del último cálculo. Vuelve a calcular la nómina antes de cerrar.');
     }
 
     // Un neto negativo no se puede pagar; el sistema anterior tampoco lo dejaba pasar (1CAL-N-P.W).

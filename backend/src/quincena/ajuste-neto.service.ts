@@ -92,6 +92,33 @@ export class AjusteNetoService {
     return { importe: centavos / 100, recibo: con(centavos) };
   }
 
+  /** Cómo cambia el recibo con un movimiento (captura o clave fija) y sus marcas, sin guardarlo. */
+  async impacto(
+    periodoId: number,
+    datos: { empleadoId: number; conceptoId: number; importe: number; gravaIsr?: boolean | null; timbra?: boolean | null; fija?: boolean },
+  ) {
+    const { ctx, entrada } = await this.cargar(periodoId, datos.empleadoId);
+    const concepto = ctx.tablas.conceptos.get(datos.conceptoId);
+    if (!concepto) throw new BadRequestException('Esa clave no es de esta nómina.');
+    const { conceptoId, importe, gravaIsr, timbra } = datos;
+    const movimiento = { conceptoId, importe, gravaIsr, timbra };
+    const despues = datos.fija
+      ? { ...entrada, fijos: [...entrada.fijos.filter((f) => f.conceptoId !== conceptoId), movimiento] }
+      : { ...entrada, capturas: [...entrada.capturas, movimiento] };
+    const resumen = (e: EmpleadoMotor) => {
+      const r = calcularRecibo(e, ctx.tablas);
+      const de = (...cuales: string[]) =>
+        Math.round(r.lineas.filter((l) => cuales.includes(ctx.tablas.conceptos.get(l.conceptoId)?.calculado ?? '')).reduce((s, l) => s + l.importe * 100, 0)) / 100;
+      return {
+        baseIsr: r.baseIsr,
+        isr: de('isr'),
+        issemym: de('issemym_salud', 'issemym_pension', 'issemym_salud_retro', 'issemym_pens_retro', 'sci', 'sci_retro'),
+        neto: r.neto,
+      };
+    };
+    return { antes: resumen(entrada), despues: resumen(despues) };
+  }
+
   async aplicar(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe: number; motivo?: string }, usuario: string) {
     const { importe, recibo } = await this.probar(periodoId, datos);
     const { ctx, entrada } = await this.cargar(periodoId, datos.empleadoId);

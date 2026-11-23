@@ -87,6 +87,9 @@ export class CapturasService {
       concepto: c.concepto.descripcion,
       naturaleza: c.concepto.naturaleza,
       importe: c.importe,
+      gravaIsr: c.gravaIsr,
+      timbra: c.timbra,
+      calculado: !!c.concepto.calculado,
       origen: c.origen,
       referencia: c.referencia,
       registradoPor: c.registradoPor,
@@ -105,7 +108,7 @@ export class CapturasService {
       `SELECT count(*)::int total, count(DISTINCT c.empleado_id)::int personas,
               coalesce(sum(c.importe) FILTER (WHERE k.naturaleza = 'P'), 0)::float p,
               coalesce(sum(c.importe) FILTER (WHERE k.naturaleza = 'D'), 0)::float d
-              ${desde.map((_, i) => `, count(*) FILTER (WHERE c.created_at > :desde${i})::int posteriores${i}`).join('')}
+              ${desde.map((_, i) => `, count(*) FILTER (WHERE c.updated_at > :desde${i})::int posteriores${i}`).join('')}
        FROM capturas c JOIN empleados e ON e.id = c.empleado_id JOIN conceptos k ON k.id = c.concepto_id
        WHERE c.periodo_id = :periodoId
          AND (CAST(:empleadoId AS int) IS NULL OR c.empleado_id = :empleadoId)
@@ -136,7 +139,7 @@ export class CapturasService {
 
   async crear(
     periodoId: number,
-    datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string },
+    datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string; gravaIsr?: boolean | null; timbra?: boolean | null },
     usuario: string,
   ) {
     const periodo = await this.periodos.abierto(periodoId);
@@ -149,6 +152,7 @@ export class CapturasService {
       throw new BadRequestException('La clave no pertenece a esta nómina.');
     }
     if (concepto.calculado) throw new BadRequestException(`${concepto.descripcion} lo calcula el sistema.`);
+    if (concepto.naturaleza === 'D' && datos.gravaIsr != null) throw new BadRequestException('Las deducciones no gravan ISR.');
     const captura = await this.capturas.create({
       periodoId,
       ...datos,
@@ -158,6 +162,21 @@ export class CapturasService {
     });
     await this.bitacora.registrar({ usuario, entidad: 'captura', entidadId: captura.id, accion: 'alta', despues: { periodoId, ...datos } });
     return { id: captura.id };
+  }
+
+  /** Cambia si esta captura grava o se timbra (null = como la quincena o el catálogo). */
+  async marcar(id: number, marcas: { gravaIsr: boolean | null; timbra: boolean | null }, usuario: string) {
+    const captura = await this.capturas.findByPk(id, { include: [Concepto] });
+    if (!captura) throw new NotFoundException('La captura ya no existe');
+    await this.periodos.abierto(captura.periodoId);
+    if (captura.concepto.calculado) throw new BadRequestException(`${captura.concepto.descripcion} lo calcula el sistema; usa los ajustes de la quincena.`);
+    if (captura.concepto.naturaleza === 'D' && marcas.gravaIsr !== null) throw new BadRequestException('Las deducciones no gravan ISR.');
+    const antes = { gravaIsr: captura.gravaIsr, timbra: captura.timbra };
+    await captura.update(marcas);
+    await this.bitacora.registrar({
+      usuario, entidad: 'captura', entidadId: id, accion: 'marcas', antes,
+      despues: { ...marcas, importe: captura.importe, empleadoId: captura.empleadoId, conceptoId: captura.conceptoId, periodoId: captura.periodoId },
+    });
   }
 
   async eliminar(id: number, usuario: string) {

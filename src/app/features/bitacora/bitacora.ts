@@ -25,25 +25,33 @@ import { FORMATO } from '../../shared/formato';
           <option value="periodo">Quincenas y cálculos</option>
           <option value="catalogo">Catálogos</option>
           <option value="tabulador">Tabulador</option>
+          <option value="calculo">Dispersión bancaria</option>
           <option value="usuario">Usuarios</option>
         </select>
+<input class="campo buscar" type="search" placeholder="Persona: nombre o CURP" [ngModel]="q()" (ngModelChange)="q.set($event); desde.set(0)" />
+        <input class="campo" type="date" aria-label="Día" [ngModel]="dia()" (ngModelChange)="dia.set($event ?? ''); desde.set(0)" />
         <input class="campo" placeholder="Usuario" [ngModel]="usuario()" (ngModelChange)="usuario.set($event); desde.set(0)" />
       </div>
       <div class="tabla-marco">
         <table class="tabla">
-          <thead><tr><th>Fecha</th><th>Usuario</th><th>Qué</th><th>Acción</th><th>Antes</th><th>Después</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Qué</th><th>Persona, clave y quincena</th><th>Acción</th><th>Antes</th><th>Después</th></tr></thead>
           <tbody>
             @for (r of registros(); track r.id) {
               <tr>
                 <td class="chico mono">{{ r.fecha | fecha: true }}</td>
                 <td class="mono">{{ r.usuario }}</td>
                 <td>{{ r.entidad }} <span class="tenue mono">{{ r.entidadId }}</span></td>
-                <td><span class="insignia sin-punto">{{ r.accion.replace('_', ' ') }}</span></td>
+                <td class="chico">
+                  @if (r.persona) {<strong>{{ r.persona }}</strong>}
+                  @if (r.clave) {<span class="sub">{{ r.clave }}</span>}
+                  @if (r.quincena) {<span class="sub">{{ r.quincena }}</span>}
+                </td>
+                <td><span class="insignia sin-punto">{{ r.accion.replaceAll('_', ' ') }}</span></td>
                 <td class="mono chico tenue json">{{ texto(r.antes) }}</td>
                 <td class="mono chico json">{{ texto(r.despues) }}</td>
               </tr>
             } @empty {
-              <tr><td colspan="6" class="tenue">Sin registros.</td></tr>
+              <tr><td colspan="7" class="tenue">Sin registros.</td></tr>
             }
           </tbody>
         </table>
@@ -69,18 +77,27 @@ export class BitacoraPagina {
   protected readonly registros = signal<RegistroBitacora[]>([]);
   protected readonly entidad = signal('');
   protected readonly usuario = signal('');
+  protected readonly q = signal('');
+  protected readonly dia = signal('');
   protected readonly desde = signal(0);
 
   constructor() {
-    effect(() => {
-      this.api.bitacora({ entidad: this.entidad(), usuario: this.usuario(), desde: this.desde() }).subscribe((r) => this.registros.set(r));
+    effect((limpiar) => {
+      const filtro = { entidad: this.entidad(), usuario: this.usuario(), q: this.q().trim(), dia: this.dia(), desde: this.desde() };
+      let pedido: { unsubscribe(): void } | undefined;
+      const espera = setTimeout(() => (pedido = this.api.bitacora(filtro).subscribe((r) => this.registros.set(r))), 250);
+      limpiar(() => {
+        clearTimeout(espera);
+        pedido?.unsubscribe();
+      });
     });
   }
 
   protected texto(valor: Record<string, unknown> | null): string {
     if (!valor) return '';
     return Object.entries(valor)
-      .filter(([, v]) => v !== undefined)
+      // Los números internos ya se muestran con su nombre en la columna de la persona.
+      .filter(([k, v]) => v !== undefined && !['empleadoId', 'conceptoId', 'periodoId', 'createdAt', 'updatedAt', 'id', 'registradoPor'].includes(k))
       .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
       .join(' · ');
   }

@@ -143,7 +143,7 @@ export class EmpleadosService {
         : null,
       sucursal: empleado.sucursal ? { sucursal: empleado.sucursal.sucursal, tipo: empleado.sucursal.tipo } : null,
       fijos: empleado.conceptosFijos
-        .map((f) => ({ id: f.id, importe: f.importe, concepto: concepto(f.concepto) }))
+        .map((f) => ({ id: f.id, importe: f.importe, gravaIsr: f.gravaIsr, timbra: f.timbra, concepto: concepto(f.concepto) }))
         .sort((a, b) => b.concepto.naturaleza.localeCompare(a.concepto.naturaleza) || a.concepto.clave - b.concepto.clave),
       descuentosPlazo: empleado.descuentosPlazo.map((d) => ({
         id: d.id,
@@ -269,23 +269,35 @@ export class EmpleadosService {
 
   // --- Percepciones y deducciones fijas ----------------------------------------------------------
 
-  async fijarConcepto(id: number, conceptoId: number, importe: number, usuario: string) {
+  /** Las marcas que no se manden se quedan como estaban; null = como la quincena o el catálogo. */
+  async fijarConcepto(
+    id: number,
+    conceptoId: number,
+    datos: { importe: number; gravaIsr?: boolean | null; timbra?: boolean | null },
+    usuario: string,
+  ) {
     const empleado = await this.buscar(id);
     const concepto = await this.conceptoDe(empleado, conceptoId);
     if (concepto.calculado) throw new BadRequestException(`${concepto.descripcion} lo calcula el sistema.`);
+    if (concepto.naturaleza === 'D' && datos.gravaIsr != null) throw new BadRequestException('Las deducciones no gravan ISR.');
+    const cambios = {
+      importe: datos.importe,
+      ...(datos.gravaIsr !== undefined ? { gravaIsr: datos.gravaIsr } : {}),
+      ...(datos.timbra !== undefined ? { timbra: datos.timbra } : {}),
+    };
     const [fijo, creado] = await this.fijos.findOrCreate({
       where: { empleadoId: id, conceptoId },
-      defaults: { empleadoId: id, conceptoId, importe },
+      defaults: { empleadoId: id, conceptoId, ...cambios },
     });
-    const anterior = creado ? null : fijo.importe;
-    if (!creado) await fijo.update({ importe });
+    const anterior = creado ? null : { importe: fijo.importe, gravaIsr: fijo.gravaIsr, timbra: fijo.timbra };
+    if (!creado) await fijo.update(cambios);
     await this.bitacora.registrar({
       usuario,
       entidad: 'empleado',
       entidadId: id,
       accion: 'concepto_fijo',
-      antes: anterior === null ? null : { clave: concepto.clave, importe: anterior },
-      despues: { clave: concepto.clave, importe },
+      antes: anterior === null ? null : { clave: concepto.clave, ...anterior },
+      despues: { clave: concepto.clave, ...cambios },
     });
   }
 

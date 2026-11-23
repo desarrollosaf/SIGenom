@@ -164,6 +164,11 @@ async function main() {
           { replacements: c, transaction },
         );
       }
+      // Queda en la bitácora, como lo que se hace desde las pantallas.
+      await db.query(
+        `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'catalogo:conceptos', NULL, 'importa_cata_pd', CAST(:despues AS jsonb), now())`,
+        { replacements: { despues: JSON.stringify({ archivo: require('node:path').basename(ruta), claves: validos.length, nuevas: nuevos.length }) }, transaction },
+      );
     });
     console.log(`\nListo: ${validos.length} claves cargadas.`);
   } finally {

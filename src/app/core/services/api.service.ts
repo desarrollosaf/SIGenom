@@ -12,6 +12,7 @@ import type {
   Diagnostico,
   EmpleadoResumen,
   FichaEmpleado,
+  ImpactoMovimiento,
   MovimientoLista,
   DatosAnalisis,
   QuincenaEmpleado,
@@ -108,8 +109,8 @@ export class ApiService {
     return this.http.put<void>(`${this.url}/empleados/${id}/curp`, { curp });
   }
 
-  fijarConcepto(id: number, conceptoId: number, importe: number): Observable<void> {
-    return this.http.put<void>(`${this.url}/empleados/${id}/conceptos/${conceptoId}`, { importe });
+  fijarConcepto(id: number, conceptoId: number, datos: { importe: number; gravaIsr?: boolean | null; timbra?: boolean | null }): Observable<void> {
+    return this.http.put<void>(`${this.url}/empleados/${id}/conceptos/${conceptoId}`, datos);
   }
 
   quitarConcepto(id: number, conceptoId: number): Observable<void> {
@@ -195,7 +196,7 @@ export class ApiService {
     );
   }
 
-  capturar(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string }) {
+  capturar(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string; gravaIsr?: boolean | null; timbra?: boolean | null }) {
     return this.http.post<{ id: number }>(`${this.url}/periodos/${periodoId}/capturas`, datos);
   }
 
@@ -207,6 +208,17 @@ export class ApiService {
       `${this.url}/periodos/${periodoId}/capturas/importar`,
       datos,
     );
+  }
+
+  probarCaptura(
+    periodoId: number,
+    datos: { empleadoId: number; conceptoId: number; importe: number; gravaIsr?: boolean | null; timbra?: boolean | null; fija?: boolean },
+  ): Observable<ImpactoMovimiento> {
+    return this.http.post<ImpactoMovimiento>(`${this.url}/periodos/${periodoId}/capturas/probar`, datos);
+  }
+
+  marcarCaptura(id: number, marcas: { gravaIsr: boolean | null; timbra: boolean | null }): Observable<void> {
+    return this.http.patch<void>(`${this.url}/capturas/${id}`, marcas);
   }
 
   borrarCaptura(id: number): Observable<void> {
@@ -327,7 +339,7 @@ export class ApiService {
     return this.http.patch<UsuarioSistema>(`${this.url}/usuarios/${id}`, datos);
   }
 
-  bitacora(filtro: { entidad?: string; usuario?: string; desde?: number }): Observable<RegistroBitacora[]> {
+  bitacora(filtro: { entidad?: string; usuario?: string; q?: string; dia?: string; desde?: number }): Observable<RegistroBitacora[]> {
     return this.http.get<RegistroBitacora[]>(`${this.url}/bitacora`, { params: sinVacios(filtro) });
   }
 }

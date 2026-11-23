@@ -116,6 +116,11 @@ async function main() {
           { replacements: { vigencia, nivel: f.nivel, rango: f.rango, s: f.sueldoQ * 2, g: f.gratificacionQ * 2, c: f.compensacionQ * 2 }, transaction },
         );
       }
+      // Queda en la bitácora, como lo que se hace desde las pantallas.
+      await db.query(
+        `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'tabulador', NULL, 'importa_tabla_rang', CAST(:despues AS jsonb), now())`,
+        { replacements: { despues: JSON.stringify({ archivo: require('node:path').basename(ruta), vigencia, renglones: filas.length }) }, transaction },
+      );
     });
     console.log(`\nListo: ${filas.length} renglones con vigencia ${vigencia}.`);
   } finally {

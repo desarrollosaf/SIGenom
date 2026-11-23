@@ -6,7 +6,7 @@
  *   npm run importar:txt-legado -- /ruta/TXT_v2                         # revisa, no escribe
  *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar               # carga (base sin empleados)
  *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar --solo-capturas
- *       Rehace las capturas del sistema anterior en las quincenas ABIERTAS (p. ej. al cargar otra
+ *       (con --quincena N o --tipo P, solo esas.) Rehace las capturas del sistema anterior en las quincenas ABIERTAS (p. ej. al cargar otra
  *       tabla-rang). No toca empleados, quincenas cerradas, cálculos ni lo que se capturó a mano.
  *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar --reemplazar  # borra empleados y nóminas antes
  *       Si ya hay cálculos hechos en SIGenom se niega, salvo que se agregue --borrar-calculos.
@@ -19,7 +19,7 @@
  *   - Por cada quincena ordinaria, un periodo abierto con las percepciones y deducciones del
  *     sistema anterior como capturas, excepto las que calcula SIGenom: ISR y cuotas ISSEMYM, y
  *     sueldo, compensación y gratificación, que salen del tabulador (cargar antes la tabla-rang con
- *     npm run importar:tabla-rang; el nivel de cada empleado se deduce de ella). Si lo pagado no
+ *     npm run importar:tabla-rang; el nivel son los dos últimos dígitos del puesto). Si lo pagado no
  *     coincide con el tabulador vigente, se captura solo la diferencia.
  *
  * Los TXT traen CURP, RFC y cuentas bancarias: se cargan solo en la base local, no se guardan en
@@ -168,6 +168,18 @@ async function main() {
   const aplicar = process.argv.includes('--aplicar');
   const reemplazar = process.argv.includes('--reemplazar');
   const soloCapturas = process.argv.includes('--solo-capturas');
+  const it = process.argv.indexOf('--tipo');
+  const soloTipo = it > 0 ? String(process.argv[it + 1] ?? '').toUpperCase() : null;
+  if (it > 0 && (!soloCapturas || !/^[A-Z]$/.test(soloTipo))) {
+    console.error('--tipo (P, D…) se usa junto con --solo-capturas.');
+    process.exit(1);
+  }
+  const iq = process.argv.indexOf('--quincena');
+  const soloQuincena = iq > 0 ? Number(process.argv[iq + 1]) : null;
+  if (iq > 0 && (!soloCapturas || !(soloQuincena >= 1 && soloQuincena <= 24))) {
+    console.error('--quincena (1 a 24) se usa junto con --solo-capturas.');
+    process.exit(1);
+  }
   if (!carpeta || !fs.existsSync(carpeta) || !fs.statSync(carpeta).isDirectory()) {
     console.error('Uso: npm run importar:txt-legado -- <carpeta con los TXT> [--aplicar] [--reemplazar]');
     process.exit(1);
@@ -298,14 +310,14 @@ async function main() {
         }
         return vigentes.get(fecha);
       };
-      /** El nivel cuyo sueldo, gratificación y compensación del rango dan lo que trae el recibo; 0 si ninguno. */
-      const nivelDe = (r, fecha) => {
-        const importe = (clave) => r.lineas.find((l) => l.naturaleza === 'P' && l.clave === clave)?.importe ?? 0;
-        const [s001, s011, s012] = [importe(1), importe(11), importe(12)];
-        if (!s001) return 0;
-        const candidatos = [...tabuladorAl(fecha).values()].filter((t) => t.nivel > 0 && t.rango === r.rango && t.s === s001 * 2);
-        const exacto = candidatos.find((t) => t.g === s012 * 2 && t.c === s011 * 2);
-        return (exacto ?? candidatos[0])?.nivel ?? 0;
+      /**
+       * El nivel son los dos últimos dígitos del puesto (1CAL-A-S.W: INTE(SUBSTRING(puesto,6,2))). Con él y el
+       * rango, 001, 011 y 012 salen exactos en todos los recibos de enero a agosto de 2025.
+       */
+      const niveles = new Set(tabulador.map((x) => x.nivel));
+      const nivelDe = (r) => {
+        const m = /^.{5}(\d{2})$/.exec(r.puesto ?? '');
+        return m && niveles.has(Number(m[1])) ? Number(m[1]) : 0;
       };
 
       const existentes = await db.query('SELECT tipo_nomina, clave, descripcion FROM conceptos', { type: QueryTypes.SELECT, transaction });
@@ -385,6 +397,7 @@ async function main() {
         const enBase = await db.query('SELECT id, curp, tipo_nomina, nivel, rango, sci FROM empleados', { type: QueryTypes.SELECT, transaction });
         const porLlave = new Map(enBase.map((e) => [`${e.tipo_nomina}|${e.curp}`, e]));
         for (const n of ordinarias) {
+          if ((soloQuincena && n.q.quincena !== soloQuincena) || (soloTipo && n.tipo !== soloTipo)) continue;
           const periodo = abiertas.find((p) => p.tipo_nomina === n.tipo && p.fin === n.fin);
           if (!periodo) { console.log(`  ${n.archivo}: quincena cerrada o inexistente, no se toca`); continue; }
           await sql(`DELETE FROM capturas WHERE periodo_id = :id AND origen = 'legado'`, { id: periodo.id });
@@ -395,19 +408,19 @@ async function main() {
           await insertar(qi, 'capturas', nuevas, transaction);
           console.log(`  ${n.archivo}: ${nuevas.length} capturas`);
         }
+        // Queda en la bitácora, como lo que se hace desde las pantallas.
+        await db.query(
+          `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'periodo', NULL, 'importa_txt_legado', CAST(:despues AS jsonb), now())`,
+          { replacements: { despues: JSON.stringify({ modo: 'solo-capturas', tipo: soloTipo ?? 'todos', quincena: soloQuincena ?? 'abiertas' }) }, transaction },
+        );
         console.log('\nListo: solo se rehicieron las capturas del sistema anterior en las quincenas abiertas.');
         return;
       }
 
-      // Nivel de cada empleado: el de su recibo más reciente que coincide con la tabla-rang vigente.
-      const nivelEmpleado = new Map();
-      for (const [llave, e] of empleados) {
-        let nivel = 0;
-        for (let i = e.recibos.length - 1; i >= 0 && !nivel; i--) nivel = nivelDe(e.recibos[i].r, e.recibos[i].n.fin);
-        nivelEmpleado.set(llave, nivel);
-      }
+      // Nivel de cada empleado: el de su puesto en el último recibo.
+      const nivelEmpleado = new Map([...empleados].map(([llave, e]) => [llave, nivelDe(e.ultimo)]));
       const conNivel = [...nivelEmpleado.values()].filter((x) => x > 0).length;
-      console.log(`Nivel deducido de la tabla-rang: ${conNivel} de ${empleados.size} empleados (los demás quedan en nivel 0 y su sueldo se captura).`);
+      console.log(`Con nivel (del puesto): ${conNivel} de ${empleados.size} empleados (los demás quedan en nivel 0 y su sueldo se captura).`);
 
       // --- Empleados -----------------------------------------------------------------------------
       const filas = [...empleados.entries()].map(([, e]) => {
@@ -475,7 +488,7 @@ async function main() {
           const p = r.lineas.filter((l) => l.naturaleza === 'P');
           return {
             calculo_id: calculo.id, empleado_id: idEmpleado.get(`${r.tipo}|${r.curp}`), nombre: r.nombre, curp: r.curp, rfc: r.rfc,
-            adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO', nivel: nivelDe(r, n.fin), rango: r.rango, dias: n.q ? 15 : 0,
+            adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO', nivel: nivelDe(r), rango: r.rango, dias: n.q ? 15 : 0,
             // El retroactivo no entra a la base del 501 cuando su ISR va aparte (601).
             base_isr: p.filter((l) => concepto.get(`${r.tipo}|${l.clave}`).grava_isr && !(l.clave > 100 && r.lineas.some((x) => x.clave === 601)))
               .reduce((s, l) => s + l.importe, 0) / 100,
@@ -512,6 +525,11 @@ async function main() {
         capturas += capturasQuincena.length;
         process.stdout.write(`  ${n.archivo} cargado\n`);
       }
+      // Queda en la bitácora, como lo que se hace desde las pantallas.
+      await db.query(
+        `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'periodo', NULL, 'importa_txt_legado', CAST(:despues AS jsonb), now())`,
+        { replacements: { despues: JSON.stringify({ modo: reemplazar ? 'reemplazar' : 'carga', empleados: empleados.size, quincenas: periodos.size, recibos: totalRecibos }) }, transaction },
+      );
       console.log(`\nListo: ${empleados.size} empleados, ${periodos.size} quincenas abiertas, ${totalRecibos} recibos del sistema anterior y ${capturas} capturas.`);
     });
   } finally {

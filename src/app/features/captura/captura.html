@@ -72,6 +72,16 @@
               </div>
               <button type="submit" class="boton primario" [disabled]="!empleado() || !nueva.conceptoId || !nueva.importe || guardando()">Agregar</button>
             </form>
+            @if (empleado() && clave(nueva.conceptoId); as c) {
+              <app-marcas-clave
+                [concepto]="c"
+                [periodoId]="contexto.abierto() ? contexto.periodo()!.id : null"
+                [empleadoId]="empleado()!.id"
+                [importe]="nueva.importe"
+                [(gravaIsr)]="nueva.gravaIsr"
+                [(timbra)]="nueva.timbra"
+              />
+            }
             @if (delEmpleado().length) {
               <div class="ya">
                 <p class="antetitulo">Ya capturado a esta persona</p>
@@ -137,7 +147,7 @@
       }
       <div class="tabla-marco">
         <table class="tabla">
-          <thead><tr><th>Empleado</th><th class="min">Clave</th><th>Concepto</th><th class="der">Importe</th><th>Origen</th><th>Registró</th><th class="min"></th></tr></thead>
+          <thead><tr><th>Empleado</th><th class="min">Clave</th><th>Concepto</th><th class="der">Importe</th><th>Grava / Timbra</th><th>Origen</th><th>Registró</th><th class="min"></th></tr></thead>
           <tbody>
             @for (c of visibles(); track c.id) {
               <tr>
@@ -145,16 +155,40 @@
                 <td class="mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
                 <td>{{ c.concepto }}@if (c.referencia) {<span class="sub" style="font-family: var(--sans)">{{ c.referencia }}</span>}</td>
                 <td class="der cifra" [class.negativo]="c.naturaleza === 'D'">{{ c.naturaleza === 'D' ? '−' : '' }}{{ c.importe | moneda }}</td>
+                <td class="chico">
+                  @let k = clave(c.conceptoId);
+                  @if (c.calculado || !k) {<span class="tenue">La calcula el sistema</span>}
+                  @else {
+                    @if (c.naturaleza === 'P') {<span [class.tenue]="c.gravaIsr === null">{{ (c.gravaIsr ?? k.gravaIsr) ? 'Grava' : 'No grava' }}</span> · }
+                    <span [class.tenue]="c.timbra === null">{{ (c.timbra ?? k.timbra) ? 'Se timbra' : 'No se timbra' }}</span>
+                    @if (c.gravaIsr !== null || c.timbra !== null) {<span class="insignia sin-punto ambar">Cambiada</span>}
+                    @if (puede()) {<button type="button" class="boton fantasma chico" (click)="editarMarcas(c)">Cambiar</button>}
+                  }
+                </td>
                 <td><span class="insignia sin-punto">{{ nombreOrigen().get(c.origen) ?? c.origen }}</span></td>
                 <td class="mono tenue chico">{{ c.registradoPor }}<span class="sub">{{ c.creadoEl | fecha: true }}</span></td>
                 <td>@if (puede()) {<button type="button" class="boton-icono" (click)="borrar(c)" aria-label="Borrar"><app-icono nombre="basura" [tamano]="16" /></button>}</td>
               </tr>
             } @empty {
-              <tr><td colspan="7"><div class="vacio"><p class="titulo-chico">Nada capturado todavía</p><p>Los movimientos de la quincena aparecerán aquí.</p></div></td></tr>
+              <tr><td colspan="8"><div class="vacio"><p class="titulo-chico">Nada capturado todavía</p><p>Los movimientos de la quincena aparecerán aquí.</p></div></td></tr>
             }
           </tbody>
         </table>
       </div>
     </section>
   }
+
+  <app-cajon [abierto]="!!marcando()" titulo="Grava y timbra" [antetitulo]="marcando()?.captura?.nombre ?? ''" (cerrar)="marcando.set(null)">
+    @if (marcando(); as m) {
+      <p><span class="mono tenue">{{ m.captura.clave.toString().padStart(3, '0') }}</span> {{ m.captura.concepto }} · <strong class="cifra">{{ m.captura.importe | moneda }}</strong></p>
+      <p class="apagado chico" style="margin: 4px 0 14px">Solo para esta persona y esta quincena. El catálogo no cambia.</p>
+      @if (clave(m.captura.conceptoId); as k) {
+        <app-marcas-clave [concepto]="k" [periodoId]="contexto.periodo()?.id ?? null" [(gravaIsr)]="m.gravaIsr" [(timbra)]="m.timbra" />
+      }
+    }
+    <ng-container pie>
+      <button type="button" class="boton" (click)="marcando.set(null)">Cancelar</button>
+      <button type="button" class="boton primario" [disabled]="guardando()" (click)="guardarMarcas()">Guardar</button>
+    </ng-container>
+  </app-cajon>
 </div>

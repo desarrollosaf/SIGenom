@@ -10,10 +10,11 @@ import { NOMBRE_CALCULO, type FichaEmpleado, type OrigenClave, type QuincenaEmpl
 import { Cajon } from '../../../shared/cajon/cajon';
 import { FORMATO } from '../../../shared/formato';
 import { Icono } from '../../../shared/icono/icono';
+import { MarcasClave } from '../../../shared/marcas-clave/marcas-clave';
 import { Recibo } from '../../../shared/recibo/recibo';
 
 type Pestana = 'general' | 'conceptos' | 'descuentos' | 'cuentas' | 'movimientos' | 'recibos' | 'personales';
-type Cajones = 'editar' | 'descuento' | 'baja' | 'permiso' | 'reingreso' | 'curp' | 'recibo' | null;
+type Cajones = 'marcas' | 'editar' | 'descuento' | 'baja' | 'permiso' | 'reingreso' | 'curp' | 'recibo' | null;
 
 const NOMBRE_MOVIMIENTO: Record<string, string> = {
   alta: 'Alta',
@@ -25,7 +26,7 @@ const NOMBRE_MOVIMIENTO: Record<string, string> = {
 
 @Component({
   selector: 'app-ficha-empleado',
-  imports: [FormsModule, RouterLink, Icono, Cajon, Recibo, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, Cajon, MarcasClave, Recibo, ...FORMATO],
   templateUrl: './ficha.html',
   styleUrl: './ficha.scss',
 })
@@ -77,7 +78,9 @@ export class FichaEmpleadoPagina {
 
   // Formularios
   protected edicion: Record<string, unknown> = {};
-  protected nuevoFijo = { conceptoId: null as number | null, importe: null as number | null };
+  protected nuevoFijo = this.movimientoVacio();
+  protected nuevaCaptura = this.movimientoVacio();
+  protected marcasFijo: { conceptoId: number; nombre: string; importe: number; gravaIsr: boolean | null; timbra: boolean | null } | null = null;
   protected descuento: { id?: number; conceptoId: number | null; importeQuincenal: number; porcentaje: number | null; quincenasPendientes: number | null; beneficiario: string; activo: boolean } = this.descuentoVacio();
   protected nuevaCuenta = { conceptoId: null as number | null, partida: '' };
   protected sucursal = { sucursal: null as number | null, tipo: 'E' };
@@ -131,17 +134,45 @@ export class FichaEmpleadoPagina {
 
   // --- Conceptos fijos ---
   protected agregarFijo(): void {
-    const { conceptoId, importe } = this.nuevoFijo;
+    const { conceptoId, importe, gravaIsr, timbra } = this.nuevoFijo;
     if (!conceptoId || !importe) return;
-    this.ejecutar(this.api.fijarConcepto(this.ficha()!.id, conceptoId, importe), 'Concepto asignado.', () => {
-      this.nuevoFijo = { conceptoId: null, importe: null };
+    this.ejecutar(this.api.fijarConcepto(this.ficha()!.id, conceptoId, { importe, gravaIsr, timbra }), 'Concepto asignado.', () => {
+      this.nuevoFijo = this.movimientoVacio();
     });
+  }
+
+  /** Solo para la quincena abierta de su nómina. */
+  protected capturar(): void {
+    const p = this.quincena()?.periodo.id;
+    const { conceptoId, importe, gravaIsr, timbra } = this.nuevaCaptura;
+    if (!p || !conceptoId || !importe) return;
+    this.ejecutar(this.api.capturar(p, { empleadoId: this.ficha()!.id, conceptoId, importe, gravaIsr, timbra }), 'Capturado en la quincena. Vuelve a calcular para que se refleje en el recibo.', () => {
+      this.nuevaCaptura = this.movimientoVacio();
+    });
+  }
+
+  protected clave(id: number | null) {
+    return this.conceptos().find((c) => c.id === id) ?? null;
+  }
+
+  protected abrirMarcas(c: FichaEmpleado['fijos'][number]): void {
+    this.marcasFijo = { conceptoId: c.concepto.id, nombre: c.concepto.nombre, importe: c.importe, gravaIsr: c.gravaIsr, timbra: c.timbra };
+    this.cajon.set('marcas');
+  }
+
+  protected guardarMarcas(): void {
+    const m = this.marcasFijo;
+    if (m) this.ejecutar(this.api.fijarConcepto(this.ficha()!.id, m.conceptoId, { importe: m.importe, gravaIsr: m.gravaIsr, timbra: m.timbra }), 'Guardado.');
+  }
+
+  private movimientoVacio() {
+    return { conceptoId: null as number | null, importe: null as number | null, gravaIsr: null as boolean | null, timbra: null as boolean | null };
   }
 
   protected cambiarFijo(conceptoId: number, valor: string, anterior: number): void {
     const importe = Number(valor);
     if (!Number.isFinite(importe) || importe === anterior) return;
-    this.ejecutar(this.api.fijarConcepto(this.ficha()!.id, conceptoId, importe), 'Importe actualizado.');
+    this.ejecutar(this.api.fijarConcepto(this.ficha()!.id, conceptoId, { importe }), 'Importe actualizado.');
   }
 
   protected async quitarFijo(conceptoId: number, nombre: string): Promise<void> {

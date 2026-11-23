@@ -102,13 +102,14 @@ export class RetroactivoService {
 
     const db = this.capturas.sequelize!;
     const replacements = { tipo: periodo.tipoNomina, desde, inicio: periodo.fechaInicio, periodo: periodo.id, retro: [...retroDe.values()].map((c) => c.id) };
-    // De cada quincena, lo pagado: la nómina de SIGenom o, si no se calculó aquí, la del sistema anterior.
+    // De cada quincena, lo pagado. Si lo pagó el sistema anterior se usa ese recibo, que trae el nivel y
+    // rango de ese momento; si no, la nómina de SIGenom.
     const pagado = await db.query<Pagado>(
       `WITH pagados AS (
          SELECT DISTINCT ON (p.id) p.id periodo_id, p.fecha_fin, c.id calculo_id FROM periodos p JOIN calculos c ON c.periodo_id = p.id
          WHERE p.tipo_nomina = :tipo AND p.fecha_inicio >= :desde AND p.fecha_fin < :inicio AND c.estado = 'terminado'
            AND (c.tipo = 'nomina' OR (c.tipo = 'legado' AND c.error IS NULL))
-         ORDER BY p.id, (c.tipo = 'nomina') DESC, c.id DESC)
+         ORDER BY p.id, (c.tipo = 'legado') DESC, c.id DESC)
        SELECT r.empleado_id, r.nombre, x.periodo_id, x.fecha_fin::text, r.nivel, r.rango, k.calculado, rc.importe::float importe
        FROM pagados x JOIN recibos r ON r.calculo_id = x.calculo_id JOIN recibo_conceptos rc ON rc.recibo_id = r.id
        JOIN conceptos k ON k.id = rc.concepto_id JOIN empleados e ON e.id = r.empleado_id

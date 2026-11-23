@@ -127,7 +127,7 @@ export const CATALOGOS: DefinicionCatalogo[] = [
     clave: 'tabulador',
     titulo: 'Tabulador de nivel y rango',
     descripcion:
-      'Importes mensuales de cada nivel y rango (la quincena paga la mitad). Cambia con cada aumento: se usa el renglón más reciente vigente a la fecha de la quincena. Con cada aumento, usa Importar tabla-rang.',
+      'Lo que gana cada nivel y rango. Con cada aumento usa Importar tabla-rang: se guarda como una tabla nueva con su fecha y las quincenas anteriores conservan la suya.',
     legado: '1ABC-NIR.W (tabla-rang)',
     modelo: Tabulador,
     llave: 'id',
@@ -140,9 +140,9 @@ export const CATALOGOS: DefinicionCatalogo[] = [
       { clave: 'vigencia', titulo: 'Vigente desde', tipo: 'fecha', requerido: true },
       { clave: 'nivel', titulo: 'Nivel', tipo: 'entero', requerido: true },
       { clave: 'rango', titulo: 'Rango', tipo: 'entero', requerido: true },
-      { clave: 'sueldoMensual', titulo: 'Sueldo (001)', tipo: 'dinero', requerido: true },
-      { clave: 'gratificacionMensual', titulo: 'Gratificación (012)', tipo: 'dinero' },
-      { clave: 'compensacionMensual', titulo: 'Compensación (011)', tipo: 'dinero' },
+      { clave: 'sueldoMensual', titulo: 'Sueldo mensual (001)', tipo: 'dinero', requerido: true },
+      { clave: 'gratificacionMensual', titulo: 'Gratificación mensual (012)', tipo: 'dinero' },
+      { clave: 'compensacionMensual', titulo: 'Compensación mensual (011)', tipo: 'dinero' },
     ],
   },
   {

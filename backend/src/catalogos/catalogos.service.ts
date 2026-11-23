@@ -102,6 +102,7 @@ export class CatalogosService {
         calculado: c.calculado,
         gravaIsr: c.gravaIsr,
         timbra: c.timbra,
+        cotizaIssemym: c.factorIssemym > 0,
       })),
     };
   }

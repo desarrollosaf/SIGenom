@@ -9,6 +9,7 @@ import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO, MonedaPipe } from '../../shared/formato';
 import { Icono } from '../../shared/icono/icono';
 import { ImportarTablaRang } from './importar-tabla-rang';
+import { TabuladorNiveles } from './tabulador-niveles';
 
 /**
  * Todos los catálogos con una sola pantalla. En el sistema anterior eran once programas casi
@@ -17,7 +18,7 @@ import { ImportarTablaRang } from './importar-tabla-rang';
  */
 @Component({
   selector: 'app-catalogos',
-  imports: [FormsModule, RouterLink, Icono, Cajon, ImportarTablaRang, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, Cajon, ImportarTablaRang, TabuladorNiveles, ...FORMATO],
   templateUrl: './catalogos.html',
   styleUrl: './catalogos.scss',
 })
