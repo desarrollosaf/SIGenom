@@ -1,6 +1,7 @@
 /**
  * Carga el catálogo de percepciones y deducciones del sistema anterior (Cata-pd) en `conceptos`,
- * con las mismas claves. El CSV sale de docs/legado/EXPORTA-CATA-PD.P.
+ * con las mismas claves. Acepta el CSV de docs/legado/EXPORTA-CATA-PD.P o la hoja de Excel del área
+ * guardada como CSV (CATA-PD-*.csv, separada por ";", encabezados CLAVE, DESC CORTA, TIPO…).
  *
  *   npm run importar:cata-pd -- /ruta/cata-pd.csv            # muestra lo que haría, no escribe
  *   npm run importar:cata-pd -- /ruta/cata-pd.csv --aplicar  # escribe
@@ -16,8 +17,19 @@ const config = require('../migrations-config')[process.env.NODE_ENV ?? 'developm
 
 const COLUMNAS = ['tipo', 'cves', 'cve-desc', 'cve-des-l', 'per-ded', 'fija-even', 'g-ispt', 'g-issem', 'g-med', 'ded-iss', 'part', 'cve-iss', 'des-pro'];
 
-/** Progress EXPORT: campos separados por coma, texto entre comillas ("" escapa una comilla), ? es nulo. */
-function separar(linea) {
+/**
+ * Encabezados de la hoja de Excel que entrega el área (CATA-PD-*.csv, separada por ";") y su campo
+ * de Cata-pd. Cuando el archivo sale de EXPORTA-CATA-PD.P los encabezados ya son los de Cata-pd.
+ */
+const ENCABEZADOS = {
+  CLAVE: 'cves', 'DESC CORTA': 'cve-desc', 'FIJA/EVE': 'fija-even', 'GRAVA ISPT': 'g-ispt', 'P /D': 'per-ded',
+  'P/D': 'per-ded', TIPO: 'tipo', 'DESCRIPCIÓN LARGA': 'cve-des-l', 'DESCRIPCION LARGA': 'cve-des-l',
+  'G-ISSSEMY': 'g-issem', 'G-ISSEMY': 'g-issem', 'G-MED': 'g-med', 'DED ISSEMYM': 'ded-iss', PARTIDA: 'part',
+  'CVE-ISS': 'cve-iss', 'DES PRO.': 'des-pro',
+};
+
+/** Progress EXPORT: campos separados por coma (o ";"), texto entre comillas ("" escapa una comilla), ? es nulo. */
+function separar(linea, delimitador = ',') {
   const campos = [];
   let actual = '';
   let comillas = false;
@@ -29,7 +41,7 @@ function separar(linea) {
       else if (ch === '"') comillas = false;
       else actual += ch;
     } else if (ch === '"') { comillas = true; entrecomillado = true; }
-    else if (ch === ',') { campos.push(entrecomillado ? actual : actual.trim()); actual = ''; entrecomillado = false; }
+    else if (ch === delimitador) { campos.push(entrecomillado ? actual : actual.trim()); actual = ''; entrecomillado = false; }
     else actual += ch;
   }
   campos.push(entrecomillado ? actual : actual.trim());
@@ -42,11 +54,14 @@ function leer(ruta) {
   const utf8 = buffer.toString('utf8');
   const texto = utf8.includes('�') ? buffer.toString('latin1') : utf8;
   const lineas = texto.split(/\r?\n/).filter((l) => l.trim() !== '');
-  const primera = separar(lineas[0]);
-  const conEncabezado = primera[1] === 'cves';
+  const delimitador = (lineas[0].match(/;/g) ?? []).length > (lineas[0].match(/,/g) ?? []).length ? ';' : ',';
+  const primera = separar(lineas[0], delimitador).map((c) => c.trim().toUpperCase());
+  const deExcel = primera.includes('CLAVE') && primera.includes('TIPO');
+  const conEncabezado = deExcel || primera[1] === 'CVES';
+  const columnas = deExcel ? primera.map((c) => ENCABEZADOS[c] ?? c) : COLUMNAS;
   return (conEncabezado ? lineas.slice(1) : lineas).map((linea, i) => {
-    const valores = separar(linea);
-    const fila = Object.fromEntries(COLUMNAS.map((c, j) => [c, valores[j] ?? null]));
+    const valores = separar(linea, delimitador);
+    const fila = Object.fromEntries(COLUMNAS.map((c) => [c, valores[columnas.indexOf(c)] ?? null]));
     fila.renglon = i + (conEncabezado ? 2 : 1);
     return fila;
   });
@@ -57,7 +72,9 @@ const texto = (v) => (v ?? '').trim();
 
 function aConcepto(f) {
   const clave = Math.trunc(numero(f.cves));
-  const descripcion = (texto(f['cve-desc']) || texto(f['cve-des-l']) || `CLAVE ${clave}`).slice(0, 60);
+  // La descripción larga es la que se lee en pantalla; la corta (10 caracteres) queda de abreviatura.
+  const descripcion = (texto(f['cve-des-l']) || texto(f['cve-desc']) || `CLAVE ${clave}`).slice(0, 60);
+  const corta = (texto(f['cve-desc']) || descripcion).slice(0, 12);
   const perDed = texto(f['per-ded']).toUpperCase();
   const naturaleza = perDed === 'P' || perDed === 'D' ? perDed : clave < 500 ? 'P' : 'D';
   const claveGem = Math.trunc(numero(f['cve-iss']));
@@ -65,7 +82,7 @@ function aConcepto(f) {
   return {
     tipo_nomina: texto(f.tipo).toUpperCase(),
     clave,
-    abreviatura: descripcion.slice(0, 12),
+    abreviatura: corta,
     descripcion,
     naturaleza,
     periodicidad: texto(f['fija-even']).toUpperCase() === 'E' ? 'E' : 'F',
@@ -141,7 +158,9 @@ async function main() {
            ON CONFLICT (tipo_nomina, clave) DO UPDATE SET
              abreviatura = EXCLUDED.abreviatura, descripcion = EXCLUDED.descripcion, naturaleza = EXCLUDED.naturaleza,
              periodicidad = EXCLUDED.periodicidad, grava_isr = EXCLUDED.grava_isr, factor_issemym = EXCLUDED.factor_issemym,
-             partida = EXCLUDED.partida, clave_issemym = EXCLUDED.clave_issemym, updated_at = now()`,
+             partida = EXCLUDED.partida, updated_at = now(),
+             -- Cata-pd trae 0 en claves que el comprobante sí imprime con clave GEM (501 → 5408): se conserva.
+             clave_issemym = COALESCE(EXCLUDED.clave_issemym, conceptos.clave_issemym)`,
           { replacements: c, transaction },
         );
       }

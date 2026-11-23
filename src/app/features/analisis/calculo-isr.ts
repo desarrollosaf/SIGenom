@@ -1,9 +1,10 @@
 /**
  * El ISR del Análisis, calculado en el navegador con las mismas reglas y el mismo redondeo que
- * backend/src/motor: centavos enteros, tarifa por "último renglón que no pasa la base", subsidio solo
- * en nómina quincenal y sin bajar de cero. Con las marcas del catálogo la diferencia debe dar 0.
+ * backend/src/motor, y con las tablas de cada quincena: tarifa quincenal, o mensual con ajuste en la
+ * 2a quincena. Con las marcas del catálogo la diferencia debe dar 0.
+ * El ISR de retroactivos por alta o reingreso (601) no se simula.
  */
-import type { DatosAnalisis, TipoCalculo } from '../../core/services/modelos';
+import type { DatosAnalisis, MetodoIsr, TipoCalculo } from '../../core/services/modelos';
 
 export interface ReciboCalculado {
   indice: number;
@@ -15,6 +16,8 @@ export interface ReciboCalculado {
   gravado: number;
   isrRetenido: number;
   isrCalculado: number;
+  /** Lo gravado y retenido en la 1a quincena del mes, si el método ajusta. */
+  primera: { base: number; isr: number } | null;
   /** Lo que se grava de cada clave en este recibo (para repartir el ISR). */
   gravadoPorConcepto: Map<number, number>;
 }
@@ -42,11 +45,22 @@ export function subsidioDe(base: number, tabla: DatosAnalisis['subsidio']): numb
   return s;
 }
 
-/** ISR a retener para una base, según el tipo de pago. */
-export function isrPara(base: number, tipo: TipoCalculo, datos: DatosAnalisis): number {
-  const causado = isrDeTarifa(base, datos.tarifa);
-  const subsidio = tipo === 'nomina' ? subsidioDe(base, datos.subsidio) : 0;
-  return Math.max(0, causado - subsidio);
+const APROX = [0, -1, -2, 2, 1, 0, -1, -2, 2, 1];
+const aCinco = (c: number) => c + Math.sign(c || 1) * APROX[Math.abs(c) % 10];
+
+/** ISR a retener para una base, según el tipo de pago y el método de la quincena. */
+export function isrPara(base: number, tipo: TipoCalculo, m: MetodoIsr, primera: { base: number; isr: number } | null): number {
+  if (base <= 0) return 0;
+  if (!m.mensual || tipo !== 'nomina') {
+    const causado = isrDeTarifa(base, m.tarifa);
+    return Math.max(0, causado - (tipo === 'nomina' ? subsidioDe(base, m.subsidio) : 0));
+  }
+  const p = m.ajuste && primera ? { base: m.redondeo === 5 ? aCinco(primera.base) : primera.base, isr: primera.isr } : null;
+  const baseTarifa = p ? p.base + base : base * 2;
+  const fila = [...m.tarifa].reverse().find((f) => centavos(f[0]) < baseTarifa);
+  const bruto = fila ? centavos(fila[1]) * 1e6 + (baseTarifa - centavos(fila[0])) * Math.round(fila[2] * 1e4) : 0;
+  const isr = Math.round((bruto - subsidioDe(baseTarifa, m.subsidio) * 1e6) / ((p ? 1 : 2) * 1e6) - (p?.isr ?? 0));
+  return Math.max(m.redondeo === 5 ? aCinco(isr) : isr, centavos(m.minimo));
 }
 
 /** Recalcula todos los recibos con las marcas de "Grava ISR" que se le den. */
@@ -58,7 +72,7 @@ export function calcularRecibos(datos: DatosAnalisis, grava: Map<number, boolean
   const porRecibo: [number, number][][] = datos.recibos.map(() => []);
   for (const [r, concepto, importe] of datos.lineas) porRecibo[r]?.push([concepto, importe]);
 
-  return datos.recibos.map((recibo, indice) => {
+  const lista = datos.recibos.map((recibo, indice): ReciboCalculado => {
     const tipo = datos.periodos[recibo.p]?.tipo ?? 'nomina';
     let percepciones = 0;
     let deducciones = 0;
@@ -90,10 +104,26 @@ export function calcularRecibos(datos: DatosAnalisis, grava: Map<number, boolean
       deducciones,
       gravado,
       isrRetenido,
-      isrCalculado: isrPara(gravado, tipo, datos),
+      isrCalculado: 0,
+      primera: null,
       gravadoPorConcepto,
     };
   });
+
+  // La 2a quincena necesita lo de la 1a del mismo mes; por eso el ISR se calcula al final.
+  const llave = (empleado: number, quincena: number) => `${empleado}|${quincena}`;
+  const primeras = new Map<string, ReciboCalculado>();
+  for (const r of lista) {
+    const p = datos.periodos[r.periodo];
+    if (p?.tipo === 'nomina' && p.quincena % 2 === 1) primeras.set(llave(r.empleado, p.quincena), r);
+  }
+  for (const r of lista) {
+    const p = datos.periodos[r.periodo];
+    const primera = p?.tipo === 'nomina' && p.quincena % 2 === 0 ? primeras.get(llave(r.empleado, p.quincena - 1)) : undefined;
+    r.primera = primera ? { base: primera.gravado, isr: primera.isrRetenido } : null;
+    r.isrCalculado = isrPara(r.gravado, r.tipo, datos.metodos[p?.metodo ?? 0], r.primera);
+  }
+  return lista;
 }
 
 /**
@@ -103,9 +133,10 @@ export function calcularRecibos(datos: DatosAnalisis, grava: Map<number, boolean
  */
 export function incrementoNecesario(r: ReciboCalculado, datos: DatosAnalisis): number {
   if (r.isrCalculado <= r.isrRetenido) return 0;
+  const metodo = datos.metodos[datos.periodos[r.periodo]?.metodo ?? 0];
   let x = r.isrCalculado - r.isrRetenido;
   for (let i = 0; i < 30; i++) {
-    const siguiente = isrPara(r.gravado + x, r.tipo, datos) - r.isrRetenido;
+    const siguiente = isrPara(r.gravado + x, r.tipo, metodo, r.primera) - r.isrRetenido;
     if (Math.abs(siguiente - x) < 1) return Math.max(0, siguiente);
     x = siguiente;
   }

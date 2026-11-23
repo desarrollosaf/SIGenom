@@ -93,7 +93,7 @@
         @if (puede()) {
           <div class="formulario uno" style="margin-top: 12px">
             <select class="campo" [(ngModel)]="origenArchivo" aria-label="Origen">
-              @for (o of origenes(); track o.clave) {
+              @for (o of origenesArchivo(); track o.clave) {
                 @if (o.clave !== 'captura') {<option [value]="o.clave">{{ o.nombre }}</option>}
               }
             </select>
@@ -120,7 +120,7 @@
       <div class="cabeza-seccion">
         <h2 class="titulo-chico">Capturado en la quincena</h2>
         <div class="resumen chico">
-          <span>{{ visibles().length }} movimientos · {{ totales().personas }} personas</span>
+          <span>{{ totales().total | numero }} movimientos · {{ totales().personas | numero }} personas</span>
           <span class="cifra">P {{ totales().p | moneda }}</span>
           <span class="cifra">D {{ totales().d | moneda }}</span>
         </div>
@@ -132,6 +132,9 @@
           @for (o of origenes(); track o.clave) {<option [value]="o.clave">{{ nombreOrigen().get(o.clave) }}</option>}
         </select>
       </div>
+      @if (visibles().length < totales().total) {
+        <p class="ayuda">Se muestran los {{ visibles().length | numero }} movimientos más recientes de {{ totales().total | numero }}. Busca por nombre, CURP o clave para encontrar el resto.</p>
+      }
       <div class="tabla-marco">
         <table class="tabla">
           <thead><tr><th>Empleado</th><th class="min">Clave</th><th>Concepto</th><th class="der">Importe</th><th>Origen</th><th>Registró</th><th class="min"></th></tr></thead>

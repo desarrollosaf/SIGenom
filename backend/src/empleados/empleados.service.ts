@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { Op, Sequelize, WhereOptions } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { contiene, patron } from '../common/busqueda';
+import { hoyMexico } from '../common/fechas';
 import { Adscripcion, Concepto, Motivo, Puesto, Tabulador } from '../database/models/catalogos.models';
 import { Recibo, Calculo, Periodo } from '../database/models/nomina.models';
 import {
@@ -115,7 +116,11 @@ export class EmpleadosService {
     if (!empleado) throw new NotFoundException('El empleado no existe');
 
     const [tab, movimientos, recibos] = await Promise.all([
-      this.tabulador.findOne({ where: { nivel: empleado.nivel, rango: empleado.rango } }),
+      // El renglón vigente hoy (el tabulador guarda las vigencias anteriores).
+      this.tabulador.findOne({
+        where: { nivel: empleado.nivel, rango: empleado.rango, vigencia: { [Op.lte]: hoyMexico() } },
+        order: [['vigencia', 'DESC']],
+      }),
       this.movimientos.findAll({
         where: { empleadoId: id },
         include: [Motivo],
@@ -133,7 +138,9 @@ export class EmpleadosService {
     return {
       ...this.resumen(empleado),
       datosPersonales: empleado.datosPersonales ?? null,
-      tabulador: tab ? { sueldoMensual: tab.sueldoMensual, compensacionMensual: tab.compensacionMensual } : null,
+      tabulador: tab
+        ? { vigencia: tab.vigencia, sueldoMensual: tab.sueldoMensual, compensacionMensual: tab.compensacionMensual, gratificacionMensual: tab.gratificacionMensual }
+        : null,
       sucursal: empleado.sucursal ? { sucursal: empleado.sucursal.sucursal, tipo: empleado.sucursal.tipo } : null,
       fijos: empleado.conceptosFijos
         .map((f) => ({ id: f.id, importe: f.importe, concepto: concepto(f.concepto) }))

@@ -39,18 +39,20 @@ const REGLAS: Regla[] = [
     severidad: 'error',
     legado: '1VERI-CA.W',
     sql: `SELECT e.id empleado_id, ${NOMBRE} nombre, 'Nivel ' || e.nivel || ' rango ' || e.rango detalle
-          FROM empleados e LEFT JOIN tabulador t ON t.nivel = e.nivel AND t.rango = e.rango
-          WHERE e.tipo_nomina = :tipo AND e.estado <> 'baja' AND t.id IS NULL`,
+          FROM empleados e
+          WHERE e.tipo_nomina = :tipo AND e.estado <> 'baja'
+            AND NOT EXISTS (SELECT 1 FROM tabulador t WHERE t.nivel = e.nivel AND t.rango = e.rango AND t.vigencia <= current_date)`,
   },
   {
     clave: 'neto_negativo',
-    titulo: 'Neto negativo',
-    descripcion: 'Las deducciones superan a las percepciones.',
+    titulo: 'Neto negativo o en cero',
+    descripcion: 'No se puede pagar: las deducciones alcanzan o superan a las percepciones. Corrígelo aquí mismo.',
     severidad: 'error',
     legado: '1VERI-CA.W',
     requiereCalculo: true,
     sql: `SELECT r.empleado_id, r.nombre, 'Neto ' || to_char(r.neto, 'FM$999,999,990.00') detalle
-          FROM recibos r WHERE r.calculo_id = :calculo AND r.neto < 0`,
+          FROM recibos r WHERE r.calculo_id = :calculo AND r.total_percepciones > 0
+            AND (r.neto < 0 OR (r.neto = 0 AND :tipo <> 'D')) ORDER BY r.neto`,
   },
   {
     clave: 'sin_cuenta',

@@ -8,6 +8,7 @@ import type { CampoCatalogo, DefinicionCatalogo } from '../../core/services/mode
 import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO, MonedaPipe } from '../../shared/formato';
 import { Icono } from '../../shared/icono/icono';
+import { ImportarTablaRang } from './importar-tabla-rang';
 
 /**
  * Todos los catálogos con una sola pantalla. En el sistema anterior eran once programas casi
@@ -16,7 +17,7 @@ import { Icono } from '../../shared/icono/icono';
  */
 @Component({
   selector: 'app-catalogos',
-  imports: [FormsModule, RouterLink, Icono, Cajon, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, Cajon, ImportarTablaRang, ...FORMATO],
   templateUrl: './catalogos.html',
   styleUrl: './catalogos.scss',
 })
@@ -37,6 +38,7 @@ export class Catalogos {
   /** La llave del renglón que se edita. No siempre es un campo del formulario (p. ej. el id interno). */
   private idEditando: string | undefined;
   protected readonly guardando = signal(false);
+  protected readonly importando = signal(false);
 
   protected readonly actual = computed(() => this.definiciones().find((d) => d.clave === this.clave()) ?? null);
   protected readonly columnas = computed(() => this.actual()?.campos.filter((c) => !c.soloFormulario) ?? []);
@@ -127,7 +129,7 @@ export class Catalogos {
     return campo.tipo === 'fecha' ? 'date' : campo.tipo === 'texto' ? 'text' : 'number';
   }
 
-  private recargar(): void {
+  protected recargar(): void {
     const def = this.actual();
     if (def) this.api.catalogo(def.clave, def.porTipoNomina ? this.contexto.tipoNomina() : undefined).subscribe((f) => this.filas.set(f));
     this.cargarDefiniciones();

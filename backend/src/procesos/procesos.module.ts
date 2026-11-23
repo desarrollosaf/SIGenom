@@ -1,6 +1,6 @@
 import { Body, Controller, Module, Post, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -11,6 +11,8 @@ class AumentoDto {
   @IsNumber() @Min(0.01) @Max(100) porcentaje: number;
   @IsOptional() @IsArray() @IsInt({ each: true }) niveles?: number[];
   @IsOptional() @IsBoolean() incluirCompensacion?: boolean;
+  /** Desde cuándo vale el tabulador nuevo; por omisión, hoy. */
+  @IsOptional() @IsDateString() vigencia?: string;
 }
 
 class FijoSimuladoDto {

@@ -48,6 +48,11 @@
             <span class="valor">{{ f.tabulador?.compensacionMensual ?? null | moneda }}</span>
           </div>
           <div class="cifra-bloque">
+            <span class="antetitulo">Gratificación mensual</span>
+            <span class="valor">{{ f.tabulador?.gratificacionMensual ?? null | moneda }}</span>
+            @if (f.tabulador; as t) {<p class="nota">Tabulador vigente desde {{ t.vigencia | fecha }}</p>}
+          </div>
+          <div class="cifra-bloque">
             <span class="antetitulo">Bruto quincenal del tabulador</span>
             <span class="valor">{{ sueldoQuincenal() | moneda }}</span>
           </div>
@@ -114,7 +119,7 @@
           </div>
           <p class="tenue chico" style="margin-top: 8px">
             Base ISR {{ q.baseIsr | moneda }} · ISR causado {{ q.isrCausado | moneda }} · subsidio {{ q.subsidio | moneda }} · base ISSEMYM {{ q.baseIssemym | moneda }}.
-            El sueldo y la compensación salen del tabulador (nivel {{ f.nivel }}, rango {{ f.rango }}).
+            El sueldo, la compensación y la gratificación salen del tabulador (nivel {{ f.nivel }}, rango {{ f.rango }}).
           </p>
         }
 

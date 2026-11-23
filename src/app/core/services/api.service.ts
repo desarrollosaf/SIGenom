@@ -1,8 +1,10 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import type {
+  AjusteNeto,
+  AjusteQuincena,
   Calculo,
   Captura,
   DefinicionCatalogo,
@@ -18,13 +20,16 @@ import type {
   PeriodoDetalle,
   ReciboDetalle,
   ReciboFila,
+  ReciboPrueba,
   RegistroBitacora,
   ResultadoSimulacion,
+  ResultadoTablaRang,
   ResumenDispersion,
   TablaReporte,
   Tablero,
   TipoCalculo,
   UsuarioSistema,
+  VistaRetroactivo,
 } from './modelos';
 
 /** Quita los filtros vacíos para no mandarlos en la URL. */
@@ -170,12 +175,24 @@ export class ApiService {
     return this.http.post<Periodo>(`${this.url}/periodos/${id}/cerrar`, {});
   }
 
-  origenes(): Observable<{ clave: string; nombre: string }[]> {
-    return this.http.get<{ clave: string; nombre: string }[]>(`${this.url}/capturas/origenes`);
+  origenes(): Observable<{ clave: string; nombre: string; sistema: boolean }[]> {
+    return this.http.get<{ clave: string; nombre: string; sistema: boolean }[]>(`${this.url}/capturas/origenes`);
   }
 
-  capturas(periodoId: number, empleadoId?: number): Observable<Captura[]> {
-    return this.http.get<Captura[]>(`${this.url}/periodos/${periodoId}/capturas`, { params: sinVacios({ empleadoId }) });
+  /** Las más recientes que cumplen el filtro (hasta 500); los totales están en resumenCapturas. */
+  capturas(periodoId: number, filtro: { empleadoId?: number; origen?: string; q?: string } = {}): Observable<Captura[]> {
+    return this.http.get<Captura[]>(`${this.url}/periodos/${periodoId}/capturas`, { params: sinVacios(filtro) });
+  }
+
+  /** Totales de todo lo capturado que cumple el filtro. `desde`: cuántas se capturaron después de cada fecha. */
+  resumenCapturas(periodoId: number, filtro: { empleadoId?: number; origen?: string; q?: string; desde?: string[] } = {}) {
+    const { desde, ...resto } = filtro;
+    let params = new HttpParams({ fromObject: sinVacios(resto) });
+    for (const d of desde ?? []) params = params.append('desde', d);
+    return this.http.get<{ total: number; personas: number; p: number; d: number; posteriores: number[] }>(
+      `${this.url}/periodos/${periodoId}/capturas/resumen`,
+      { params },
+    );
   }
 
   capturar(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string }) {
@@ -194,6 +211,44 @@ export class ApiService {
 
   borrarCaptura(id: number): Observable<void> {
     return this.http.delete<void>(`${this.url}/capturas/${id}`);
+  }
+
+  ajustesQuincena(periodoId: number): Observable<AjusteQuincena[]> {
+    return this.http.get<AjusteQuincena[]>(`${this.url}/periodos/${periodoId}/ajustes`);
+  }
+
+  /** gravaIsr / timbra en null = como el catálogo; si ambos quedan así, el ajuste se quita. */
+  ajustarQuincena(periodoId: number, datos: { conceptoId: number; gravaIsr: boolean | null; timbra: boolean | null; motivo?: string }): Observable<AjusteQuincena[]> {
+    return this.http.post<AjusteQuincena[]>(`${this.url}/periodos/${periodoId}/ajustes`, datos);
+  }
+
+  ajusteNeto(periodoId: number, empleadoId: number): Observable<AjusteNeto> {
+    return this.http.get<AjusteNeto>(`${this.url}/periodos/${periodoId}/ajuste-neto/${empleadoId}`);
+  }
+
+  /** Sin importe, el servidor busca el mínimo que deja el neto en `objetivo`. No guarda nada. */
+  probarAjusteNeto(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe?: number; objetivo?: number }) {
+    return this.http.post<{ importe: number; recibo: ReciboPrueba }>(`${this.url}/periodos/${periodoId}/ajuste-neto/probar`, datos);
+  }
+
+  aplicarAjusteNeto(periodoId: number, datos: { empleadoId: number; conceptoId: number; importe: number; motivo?: string }): Observable<AjusteNeto> {
+    return this.http.post<AjusteNeto>(`${this.url}/periodos/${periodoId}/ajuste-neto`, datos);
+  }
+
+  vistaRetroactivo(periodoId: number, desde: string): Observable<VistaRetroactivo> {
+    return this.http.post<VistaRetroactivo>(`${this.url}/periodos/${periodoId}/retroactivo/vista-previa`, { desde });
+  }
+
+  aplicarRetroactivo(periodoId: number, desde: string): Observable<VistaRetroactivo> {
+    return this.http.post<VistaRetroactivo>(`${this.url}/periodos/${periodoId}/retroactivo`, { desde });
+  }
+
+  importarTablaRang(archivo: File, vigencia: string, aplicar: boolean): Observable<ResultadoTablaRang> {
+    const datos = new FormData();
+    datos.append('archivo', archivo);
+    datos.append('vigencia', vigencia);
+    datos.append('aplicar', String(aplicar));
+    return this.http.post<ResultadoTablaRang>(`${this.url}/catalogos/tabulador/importar`, datos);
   }
 
   calcular(periodoId: number, tipo: TipoCalculo): Observable<Calculo> {
@@ -240,14 +295,18 @@ export class ApiService {
     return this.http.get<TablaReporte>(`${this.url}/reportes/${clave}`, { params: sinVacios(filtro) as Record<string, string> });
   }
 
-  vistaAumento(datos: { porcentaje: number; niveles?: number[]; incluirCompensacion?: boolean }) {
+  vistaAumento(datos: { porcentaje: number; niveles?: number[]; incluirCompensacion?: boolean; vigencia?: string }) {
     return this.http.post<{
-      renglones: { id: number; nivel: number; rango: number; sueldoAntes: number; sueldoDespues: number; compensacionAntes: number; compensacionDespues: number }[];
+      vigencia: string;
+      renglones: {
+        id: number; nivel: number; rango: number; sueldoAntes: number; sueldoDespues: number;
+        compensacionAntes: number; compensacionDespues: number; gratificacionAntes: number; gratificacionDespues: number;
+      }[];
       empleados: number;
     }>(`${this.url}/procesos/aumento-salarial/vista-previa`, datos);
   }
 
-  aplicarAumento(datos: { porcentaje: number; niveles?: number[]; incluirCompensacion?: boolean }) {
+  aplicarAumento(datos: { porcentaje: number; niveles?: number[]; incluirCompensacion?: boolean; vigencia?: string }) {
     return this.http.post<{ actualizados: number }>(`${this.url}/procesos/aumento-salarial`, datos);
   }
 

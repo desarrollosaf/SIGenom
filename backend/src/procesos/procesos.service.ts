@@ -12,7 +12,10 @@ export interface AumentoSalarial {
   porcentaje: number;
   /** Niveles a los que aplica; vacío = todos. */
   niveles?: number[];
+  /** También a la compensación (011) y la gratificación (012). */
   incluirCompensacion?: boolean;
+  /** Desde cuándo vale el tabulador nuevo; por omisión, hoy. */
+  vigencia?: string;
 }
 
 @Injectable()
@@ -26,7 +29,8 @@ export class ProcesosService {
 
   /**
    * Aumento salarial general (1CAL-A-S.W). El original cambiaba el importe en cada empleado; aquí se
-   * cambia el tabulador y todos los que tengan ese nivel y rango lo reciben en el siguiente cálculo.
+   * crea una vigencia nueva del tabulador: las quincenas desde esa fecha usan los importes nuevos y
+   * las anteriores conservan los suyos (queda la historia para auditoría y retroactivos).
    */
   async vistaPrevia(datos: AumentoSalarial) {
     const filas = await this.filasAumento(datos);
@@ -41,24 +45,28 @@ export class ProcesosService {
       sueldoDespues: aumentar(t.sueldoMensual, datos.porcentaje),
       compensacionAntes: t.compensacionMensual,
       compensacionDespues: datos.incluirCompensacion ? aumentar(t.compensacionMensual, datos.porcentaje) : t.compensacionMensual,
+      gratificacionAntes: t.gratificacionMensual,
+      gratificacionDespues: datos.incluirCompensacion ? aumentar(t.gratificacionMensual, datos.porcentaje) : t.gratificacionMensual,
     }));
-    return { renglones, empleados };
+    return { vigencia: datos.vigencia ?? hoyMexico(), renglones, empleados };
   }
 
   async aplicarAumento(datos: AumentoSalarial, usuario: string) {
     const filas = await this.filasAumento(datos);
+    const vigencia = datos.vigencia ?? hoyMexico();
     await this.tabulador.sequelize!.transaction(async (transaction) => {
       for (const t of filas) {
-        await t.update(
-          {
-            sueldoMensual: aumentar(t.sueldoMensual, datos.porcentaje),
-            ...(datos.incluirCompensacion ? { compensacionMensual: aumentar(t.compensacionMensual, datos.porcentaje) } : {}),
-          },
-          { transaction },
-        );
+        const nuevo = {
+          sueldoMensual: aumentar(t.sueldoMensual, datos.porcentaje),
+          compensacionMensual: datos.incluirCompensacion ? aumentar(t.compensacionMensual, datos.porcentaje) : t.compensacionMensual,
+          gratificacionMensual: datos.incluirCompensacion ? aumentar(t.gratificacionMensual, datos.porcentaje) : t.gratificacionMensual,
+        };
+        // Si ya había renglón con esa vigencia se corrige; si no, se agrega uno nuevo.
+        if (t.vigencia === vigencia) await t.update(nuevo, { transaction });
+        else await this.tabulador.create({ vigencia, nivel: t.nivel, rango: t.rango, ...nuevo }, { transaction });
       }
       await this.bitacora.registrar(
-        { usuario, entidad: 'tabulador', accion: 'aumento_general', despues: { ...datos, renglones: filas.length } },
+        { usuario, entidad: 'tabulador', accion: 'aumento_general', despues: { ...datos, vigencia, renglones: filas.length } },
         transaction,
       );
     });
@@ -70,7 +78,7 @@ export class ProcesosService {
    * motor que la nómina real, sin guardar nada.
    */
   async simular(datos: { tipoNomina: string; nivel: number; rango: number; dias?: number; fijos?: { conceptoId: number; importe: number }[] }) {
-    const tab = await this.tabulador.findOne({ where: { nivel: datos.nivel, rango: datos.rango } });
+    const tab = (await this.tablas.tabuladorVigente(hoyMexico())).get(`${datos.nivel}-${datos.rango}`);
     if (!tab) throw new BadRequestException('Ese nivel y rango no están en el tabulador.');
     const tablas = await this.tablas.paraNomina(datos.tipoNomina, hoyMexico());
     return calcularRecibo(
@@ -78,6 +86,7 @@ export class ProcesosService {
         empleadoId: 0,
         sueldoMensual: tab.sueldoMensual,
         compensacionMensual: tab.compensacionMensual,
+        gratificacionMensual: tab.gratificacionMensual,
         dias: datos.dias ?? tablas.parametros.diasQuincena,
         fijos: datos.fijos ?? [],
         capturas: [],
@@ -87,12 +96,13 @@ export class ProcesosService {
     );
   }
 
+  /** Los renglones vigentes a la fecha del aumento, que son la base de los nuevos. */
   private async filasAumento(datos: AumentoSalarial) {
     if (!(datos.porcentaje > 0 && datos.porcentaje <= 100)) throw new BadRequestException('El porcentaje va de 0 a 100.');
-    return this.tabulador.findAll({
-      where: datos.niveles?.length ? { nivel: datos.niveles } : {},
-      order: [['nivel', 'ASC'], ['rango', 'ASC']],
-    });
+    const vigentes = await this.tablas.tabuladorVigente(datos.vigencia ?? hoyMexico());
+    return [...vigentes.values()]
+      .filter((t) => !datos.niveles?.length || datos.niveles.includes(t.nivel))
+      .sort((a, b) => a.nivel - b.nivel || a.rango - b.rango);
   }
 }
 

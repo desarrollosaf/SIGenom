@@ -62,7 +62,7 @@ export class FichaEmpleadoPagina {
   protected readonly motivos = computed(() => this.contexto.opciones()?.motivos ?? []);
   protected readonly sueldoQuincenal = computed(() => {
     const t = this.ficha()?.tabulador;
-    return t ? (t.sueldoMensual + t.compensacionMensual) / 2 : null;
+    return t ? (t.sueldoMensual + t.compensacionMensual + t.gratificacionMensual) / 2 : null;
   });
 
   protected readonly pestanas: { clave: Pestana; titulo: string }[] = [

@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Op, QueryTypes, Sequelize, type WhereOptions } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
+import { contiene, patron } from '../common/busqueda';
 import { Concepto } from '../database/models/catalogos.models';
 import { Captura } from '../database/models/nomina.models';
 import { Empleado } from '../database/models/personal.models';
@@ -18,6 +20,24 @@ export const ORIGENES = {
 
 export type Origen = keyof typeof ORIGENES;
 
+/** Orígenes que pone el sistema: se muestran y se filtran, pero no se eligen al importar un archivo. */
+export const ORIGENES_SISTEMA = {
+  ajuste_neto: 'Ajuste de neto (Verificación)',
+  retroactivo: 'Retroactivo de aumento',
+  legado: 'Sistema anterior (TXT)',
+} as const;
+
+/** Filtro de la lista de capturas: por persona, por origen o por texto (nombre, CURP o clave). */
+export interface FiltroCapturas {
+  empleadoId?: number;
+  origen?: string;
+  q?: string;
+  limite?: number;
+}
+
+/** Cuántos renglones devuelve la lista como máximo; los totales siempre son de todo. */
+export const LIMITE_LISTA = 500;
+
 @Injectable()
 export class CapturasService {
   constructor(
@@ -28,12 +48,34 @@ export class CapturasService {
     @InjectModel(Concepto) private readonly conceptos: typeof Concepto,
   ) {}
 
-  async listar(periodoId: number, empleadoId?: number) {
+  /**
+   * Las capturas más recientes que cumplen el filtro (hasta LIMITE_LISTA). Una quincena puede traer
+   * más de 10 mil movimientos: la búsqueda se hace aquí, no sobre lo que ya se mostró.
+   */
+  async listar(periodoId: number, filtro: FiltroCapturas = {}) {
+    const q = filtro.q?.trim();
+    const where: WhereOptions = {
+      periodoId,
+      ...(filtro.empleadoId ? { empleadoId: filtro.empleadoId } : {}),
+      ...(filtro.origen ? { origen: filtro.origen } : {}),
+      ...(q
+        ? {
+            [Op.or]: [
+              { '$empleado.curp$': { [Op.iLike]: patron(q) } },
+              contiene(
+                Sequelize.fn('concat_ws', ' ', Sequelize.col('empleado.apellido_paterno'), Sequelize.col('empleado.apellido_materno'), Sequelize.col('empleado.nombres')),
+                q,
+              ),
+              ...(/^\d{1,4}$/.test(q) ? [{ '$concepto.clave$': Number(q) }] : []),
+            ],
+          }
+        : {}),
+    };
     const filas = await this.capturas.findAll({
-      where: { periodoId, ...(empleadoId ? { empleadoId } : {}) },
+      where,
       include: [Empleado, Concepto],
       order: [['id', 'DESC']],
-      limit: 2000,
+      limit: Math.min(filtro.limite ?? LIMITE_LISTA, 5000),
     });
     return filas.map((c) => ({
       id: c.id,
@@ -50,6 +92,46 @@ export class CapturasService {
       registradoPor: c.registradoPor,
       creadoEl: c.createdAt,
     }));
+  }
+
+  /**
+   * Totales de todas las capturas de la quincena que cumplen el filtro. `desde`: por cada fecha,
+   * cuántas se registraron después (para saber si un cálculo ya no refleja todo lo capturado).
+   */
+  async resumen(periodoId: number, filtro: Omit<FiltroCapturas, 'limite'> & { desde?: string[] } = {}) {
+    const q = filtro.q?.trim();
+    const desde = (filtro.desde ?? []).filter((d) => !Number.isNaN(Date.parse(d)));
+    const [fila] = await this.capturas.sequelize!.query<Record<string, string | number>>(
+      `SELECT count(*)::int total, count(DISTINCT c.empleado_id)::int personas,
+              coalesce(sum(c.importe) FILTER (WHERE k.naturaleza = 'P'), 0)::float p,
+              coalesce(sum(c.importe) FILTER (WHERE k.naturaleza = 'D'), 0)::float d
+              ${desde.map((_, i) => `, count(*) FILTER (WHERE c.created_at > :desde${i})::int posteriores${i}`).join('')}
+       FROM capturas c JOIN empleados e ON e.id = c.empleado_id JOIN conceptos k ON k.id = c.concepto_id
+       WHERE c.periodo_id = :periodoId
+         AND (CAST(:empleadoId AS int) IS NULL OR c.empleado_id = :empleadoId)
+         AND (CAST(:origen AS text) IS NULL OR c.origen = :origen)
+         AND (CAST(:q AS text) IS NULL OR e.curp ILIKE :patron
+              OR sin_acentos(concat_ws(' ', e.apellido_paterno, e.apellido_materno, e.nombres)) LIKE :patron
+              OR k.clave::text = :q)`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: {
+          periodoId,
+          empleadoId: filtro.empleadoId ?? null,
+          origen: filtro.origen || null,
+          q: q || null,
+          patron: q ? patron(q) : '',
+          ...Object.fromEntries(desde.map((d, i) => [`desde${i}`, new Date(d)])),
+        },
+      },
+    );
+    return {
+      total: Number(fila.total),
+      personas: Number(fila.personas),
+      p: Number(fila.p),
+      d: Number(fila.d),
+      posteriores: desde.map((_, i) => Number(fila[`posteriores${i}`])),
+    };
   }
 
   async crear(

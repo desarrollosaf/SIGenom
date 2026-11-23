@@ -43,10 +43,18 @@ export class Puesto extends Model {
   declare activo: boolean;
 }
 
+/**
+ * Tabulador por nivel y rango (tabla-rang). Cambia con cada aumento: cada renglón vale desde su
+ * vigencia y la quincena usa el más reciente que no sea posterior a su fecha.
+ * Importes mensuales: la quincena paga la mitad (sueldo 001, gratificación 012, compensación 011).
+ */
 @Table({ tableName: 'tabulador', underscored: true, timestamps: true })
 export class Tabulador extends Model {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   declare id: number;
+
+  @Column(DataType.DATEONLY)
+  declare vigencia: string;
 
   @Column(DataType.SMALLINT)
   declare nivel: number;
@@ -59,6 +67,9 @@ export class Tabulador extends Model {
 
   @Column(dinero('compensacionMensual'))
   declare compensacionMensual: number;
+
+  @Column(dinero('gratificacionMensual'))
+  declare gratificacionMensual: number;
 }
 
 @Table({ tableName: 'conceptos', underscored: true, timestamps: true })
@@ -99,6 +110,10 @@ export class Concepto extends Model {
   @Column(DataType.STRING(20))
   declare calculado: string | null;
 
+  /** Va en el CFDI de nómina. Una quincena puede cambiarlo con un ajuste (PeriodoConcepto). */
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean;
+
   @Column(DataType.BOOLEAN)
   declare activo: boolean;
 }
@@ -107,6 +122,10 @@ export class Concepto extends Model {
 export class TablaIsr extends Model {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   declare id: number;
+
+  /** M mensual, Q quincenal. */
+  @Column(DataType.STRING(1))
+  declare periodicidad: 'M' | 'Q';
 
   @Column(DataType.DATEONLY)
   declare vigencia: string;
@@ -125,6 +144,10 @@ export class TablaIsr extends Model {
 export class TablaSubsidio extends Model {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   declare id: number;
+
+  /** M mensual, Q quincenal. */
+  @Column(DataType.STRING(1))
+  declare periodicidad: 'M' | 'Q';
 
   @Column(DataType.DATEONLY)
   declare vigencia: string;
@@ -153,8 +176,15 @@ export class Motivo extends Model {
 
 @Table({ tableName: 'parametros', underscored: true, timestamps: true })
 export class Parametro extends Model {
-  @Column({ type: DataType.STRING(40), primaryKey: true })
+  @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
+  declare id: number;
+
+  @Column(DataType.STRING(40))
   declare clave: string;
+
+  /** Desde cuándo vale. Las quincenas usan el valor más reciente vigente a su fecha. */
+  @Column(DataType.DATEONLY)
+  declare vigencia: string;
 
   @Column(DataType.STRING(200))
   declare valor: string;

@@ -3,8 +3,8 @@ import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { nombreQuincena } from '../common/fechas';
-import { TipoNomina } from '../database/models/catalogos.models';
-import { Calculo, Captura, Periodo, Recibo, ReciboConcepto } from '../database/models/nomina.models';
+import { Concepto, TipoNomina } from '../database/models/catalogos.models';
+import { Calculo, Captura, Periodo, PeriodoConcepto, Recibo, ReciboConcepto } from '../database/models/nomina.models';
 import { DescuentoPlazo } from '../database/models/personal.models';
 import { fechasDeQuincena, siguienteQuincena } from '../motor/periodos';
 
@@ -18,7 +18,69 @@ export class PeriodosService {
     @InjectModel(Recibo) private readonly recibos: typeof Recibo,
     @InjectModel(DescuentoPlazo) private readonly plazos: typeof DescuentoPlazo,
     @InjectModel(TipoNomina) private readonly tipos: typeof TipoNomina,
+    @InjectModel(PeriodoConcepto) private readonly ajustes: typeof PeriodoConcepto,
+    @InjectModel(Concepto) private readonly conceptos: typeof Concepto,
   ) {}
+
+  // --- Ajustes de claves solo para esta quincena -----------------------------------------------
+
+  /** Claves que en esta quincena gravan o se timbran distinto de lo que dice el catálogo. */
+  async listarAjustes(id: number) {
+    await this.buscar(id);
+    const filas = await this.ajustes.findAll({ where: { periodoId: id }, include: [Concepto] });
+    return filas
+      .map((a) => ({
+        conceptoId: a.conceptoId,
+        clave: a.concepto.clave,
+        descripcion: a.concepto.descripcion,
+        naturaleza: a.concepto.naturaleza,
+        catalogo: { gravaIsr: a.concepto.gravaIsr, timbra: a.concepto.timbra },
+        gravaIsr: a.gravaIsr,
+        timbra: a.timbra,
+        motivo: a.motivo,
+        registradoPor: a.registradoPor,
+        actualizadoEl: a.updatedAt,
+      }))
+      .sort((a, b) => b.naturaleza.localeCompare(a.naturaleza) || a.clave - b.clave);
+  }
+
+  /**
+   * Para esta quincena, la clave grava o no y se timbra o no (null = como el catálogo). Si los dos
+   * quedan como el catálogo, el ajuste se borra. Vale a partir del siguiente cálculo.
+   */
+  async guardarAjuste(id: number, datos: { conceptoId: number; gravaIsr: boolean | null; timbra: boolean | null; motivo?: string }, usuario: string) {
+    const periodo = await this.abierto(id);
+    const concepto = await this.conceptos.findByPk(datos.conceptoId);
+    if (!concepto || concepto.tipoNomina !== periodo.tipoNomina) {
+      throw new BadRequestException('Esa clave no es de este tipo de nómina.');
+    }
+    const gravaIsr = datos.gravaIsr === concepto.gravaIsr ? null : datos.gravaIsr;
+    const timbra = datos.timbra === concepto.timbra ? null : datos.timbra;
+    if (gravaIsr !== null && concepto.naturaleza === 'D') throw new BadRequestException('Las deducciones no gravan ISR.');
+
+    const anterior = await this.ajustes.findOne({ where: { periodoId: id, conceptoId: concepto.id } });
+    await this.ajustes.sequelize!.transaction(async (transaction) => {
+      if (gravaIsr === null && timbra === null) {
+        await anterior?.destroy({ transaction });
+      } else if (anterior) {
+        await anterior.update({ gravaIsr, timbra, motivo: datos.motivo ?? null, registradoPor: usuario }, { transaction });
+      } else {
+        await this.ajustes.create({ periodoId: id, conceptoId: concepto.id, gravaIsr, timbra, motivo: datos.motivo ?? null, registradoPor: usuario }, { transaction });
+      }
+      await this.bitacora.registrar(
+        {
+          usuario,
+          entidad: 'periodo',
+          entidadId: id,
+          accion: 'ajusta_clave',
+          antes: anterior ? { clave: concepto.clave, gravaIsr: anterior.gravaIsr, timbra: anterior.timbra } : null,
+          despues: { clave: concepto.clave, gravaIsr, timbra, motivo: datos.motivo ?? null },
+        },
+        transaction,
+      );
+    });
+    return this.listarAjustes(id);
+  }
 
   async listar(tipoNomina: string, anio?: number) {
     const filas = await this.periodos.findAll({
@@ -100,6 +162,20 @@ export class PeriodosService {
     const posterior = await this.capturas.count({ where: { periodoId: id, createdAt: { [Op.gt]: nomina.iniciadoEl ?? nomina.createdAt } } });
     if (posterior > 0) {
       throw new BadRequestException(`Hay ${posterior} capturas posteriores al último cálculo. Vuelve a calcular la nómina antes de cerrar.`);
+    }
+
+    // Un neto negativo no se puede pagar; el sistema anterior tampoco lo dejaba pasar (1CAL-N-P.W).
+    const negativos = await this.recibos.count({
+      where: {
+        calculoId: nomina.id,
+        totalPercepciones: { [Op.gt]: 0 },
+        neto: periodo.tipoNomina === 'D' ? { [Op.lt]: 0 } : { [Op.lte]: 0 },
+      },
+    });
+    if (negativos > 0) {
+      throw new BadRequestException(
+        `Hay ${negativos} ${negativos === 1 ? 'recibo con neto negativo o en cero' : 'recibos con neto negativo o en cero'}. Corrígelos en Verificación, vuelve a calcular la nómina y cierra.`,
+      );
     }
 
     await this.periodos.sequelize!.transaction(async (transaction) => {

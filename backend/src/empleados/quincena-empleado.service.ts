@@ -2,8 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { hoyMexico, nombreQuincena } from '../common/fechas';
+import { EntradaService } from '../common/entrada.service';
 import { TablasService } from '../common/tablas.service';
-import { Tabulador } from '../database/models/catalogos.models';
 import { Captura, Periodo } from '../database/models/nomina.models';
 import { DescuentoPlazo, Empleado, EmpleadoConcepto, MovimientoPersonal } from '../database/models/personal.models';
 import { calcularRecibo, diasPagables } from '../motor/motor';
@@ -20,11 +20,11 @@ export type OrigenClave = 'calculado' | 'fija' | 'plazo' | 'captura';
 export class QuincenaEmpleadoService {
   constructor(
     private readonly tablas: TablasService,
+    private readonly entrada: EntradaService,
     @InjectModel(Empleado) private readonly empleados: typeof Empleado,
     @InjectModel(Periodo) private readonly periodos: typeof Periodo,
     @InjectModel(Captura) private readonly capturas: typeof Captura,
     @InjectModel(MovimientoPersonal) private readonly movimientos: typeof MovimientoPersonal,
-    @InjectModel(Tabulador) private readonly tabulador: typeof Tabulador,
   ) {}
 
   async estimar(id: number) {
@@ -42,7 +42,7 @@ export class QuincenaEmpleadoService {
     const fechas = periodo ? { inicio: periodo.fechaInicio, fin: periodo.fechaFin } : fechasDeQuincena(q.anio, q.quincena);
 
     const [tab, capturas, permisos, tablas] = await Promise.all([
-      this.tabulador.findOne({ where: { nivel: empleado.nivel, rango: empleado.rango } }),
+      this.tablas.tabuladorVigente(fechas.fin).then((t) => t.get(`${empleado.nivel}-${empleado.rango}`) ?? null),
       periodo ? this.capturas.findAll({ where: { periodoId: periodo.id, empleadoId: id } }) : Promise.resolve([] as Captura[]),
       this.movimientos.findAll({
         where: {
@@ -55,6 +55,8 @@ export class QuincenaEmpleadoService {
       }),
       this.tablas.paraNomina(empleado.tipoNomina, fechas.fin),
     ]);
+    if (periodo) await this.tablas.aplicarAjustes(tablas, periodo.id);
+    const primeraQuincena = periodo ? ((await this.entrada.primerasQuincenas(periodo, [id])).get(id) ?? null) : null;
 
     const fijos = empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe }));
     const plazos = empleado.descuentosPlazo
@@ -67,6 +69,9 @@ export class QuincenaEmpleadoService {
         empleadoId: id,
         sueldoMensual: tab?.sueldoMensual ?? 0,
         compensacionMensual: tab?.compensacionMensual ?? 0,
+        gratificacionMensual: tab?.gratificacionMensual ?? 0,
+        sci: empleado.sci,
+        primeraQuincena,
         dias: diasPagables(fechas, empleado, permisos.map((p) => ({ inicio: p.fechaInicio, fin: p.fechaFin })), tablas.parametros.diasQuincena),
         fijos,
         capturas: capturados,

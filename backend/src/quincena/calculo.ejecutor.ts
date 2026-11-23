@@ -2,17 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, WhereOptions } from 'sequelize';
-import { TablasService } from '../common/tablas.service';
-import { Tabulador } from '../database/models/catalogos.models';
-import { Calculo, Captura, Periodo, Recibo, ReciboConcepto } from '../database/models/nomina.models';
-import {
-  DescuentoPlazo,
-  Empleado,
-  EmpleadoConcepto,
-  MovimientoPersonal,
-} from '../database/models/personal.models';
-import { calcularRecibo, diasPagables, ModoCalculo } from '../motor/motor';
-import type { EmpleadoMotor, TablasMotor } from '../motor/tipos';
+import { Calculo, Periodo, Recibo, ReciboConcepto } from '../database/models/nomina.models';
+import { DescuentoPlazo, Empleado, EmpleadoConcepto } from '../database/models/personal.models';
+import { calcularRecibo, ModoCalculo } from '../motor/motor';
+import type { TablasMotor } from '../motor/tipos';
+import { type ContextoCalculo, EntradaService } from '../common/entrada.service';
 
 /**
  * Ejecuta un cálculo completo. Lo llama el worker, nunca la API: con miles de empleados tarda, y
@@ -26,13 +20,10 @@ export class CalculoEjecutor {
 
   constructor(
     config: ConfigService,
-    private readonly tablas: TablasService,
+    private readonly entrada: EntradaService,
     @InjectModel(Calculo) private readonly calculos: typeof Calculo,
     @InjectModel(Periodo) private readonly periodos: typeof Periodo,
     @InjectModel(Empleado) private readonly empleados: typeof Empleado,
-    @InjectModel(Captura) private readonly capturas: typeof Captura,
-    @InjectModel(MovimientoPersonal) private readonly movimientos: typeof MovimientoPersonal,
-    @InjectModel(Tabulador) private readonly tabulador: typeof Tabulador,
     @InjectModel(Recibo) private readonly recibos: typeof Recibo,
     @InjectModel(ReciboConcepto) private readonly conceptosRecibo: typeof ReciboConcepto,
   ) {
@@ -52,11 +43,12 @@ export class CalculoEjecutor {
     try {
       // Reintento: se borra lo que haya dejado un intento anterior.
       await this.recibos.destroy({ where: { calculoId } });
-      const tablas = await this.tablas.paraNomina(periodo.tipoNomina, periodo.fechaFin);
+      const ctx = await this.entrada.contexto(periodo, modo);
+      const { tablas } = ctx;
       this.validarTablas(tablas, modo);
-      const tabulador = new Map(
-        (await this.tabulador.findAll()).map((t) => [`${t.nivel}-${t.rango}`, t]),
-      );
+      if (ctx.ajustes.length) this.logger.log(`Cálculo ${calculoId}: ajustes de la quincena: ${ctx.ajustes.join('; ')}.`);
+      // Evidencia: con qué se calculó. Aunque después cambien los catálogos, aquí queda lo que se usó.
+      await calculo.update({ tablas: evidencia(ctx) });
 
       const where = this.universo(periodo, modo);
       const total = await this.empleados.count({ where });
@@ -79,53 +71,16 @@ export class CalculoEjecutor {
         if (lote.length === 0) break;
         ultimoId = lote[lote.length - 1].id;
 
-        const ids = lote.map((e) => e.id);
-        const [capturas, permisos] = await Promise.all([
-          modo === 'quincenal'
-            ? this.capturas.findAll({ where: { periodoId: periodo.id, empleadoId: ids } })
-            : Promise.resolve([] as Captura[]),
-          this.movimientos.findAll({
-            where: {
-              empleadoId: ids,
-              tipo: 'permiso',
-              cancelado: false,
-              fechaInicio: { [Op.lte]: periodo.fechaFin },
-              [Op.or]: [{ fechaFin: null }, { fechaFin: { [Op.gte]: periodo.fechaInicio } }],
-            },
-          }),
-        ]);
-
-        const filas = lote.map((empleado) => {
-          const tab = tabulador.get(`${empleado.nivel}-${empleado.rango}`);
-          const entrada: EmpleadoMotor = {
-            empleadoId: empleado.id,
-            sueldoMensual: tab?.sueldoMensual ?? 0,
-            compensacionMensual: tab?.compensacionMensual ?? 0,
-            dias: diasPagables(
-              { inicio: periodo.fechaInicio, fin: periodo.fechaFin },
-              empleado,
-              permisos.filter((p) => p.empleadoId === empleado.id).map((p) => ({ inicio: p.fechaInicio, fin: p.fechaFin })),
-              tablas.parametros.diasQuincena,
-            ),
-            fijos: empleado.conceptosFijos.map((f) => ({ conceptoId: f.conceptoId, importe: f.importe })),
-            capturas: capturas.filter((c) => c.empleadoId === empleado.id).map((c) => ({ conceptoId: c.conceptoId, importe: c.importe })),
-            descuentosPlazo:
-              modo === 'quincenal'
-                ? empleado.descuentosPlazo
-                    .filter((d) => d.quincenasPendientes === null || d.quincenasPendientes > 0)
-                    .map((d) => ({ conceptoId: d.conceptoId, importeQuincenal: d.importeQuincenal, porcentaje: d.porcentaje }))
-                : [],
-            proporcionAnual: proporcionAnual(periodo.anio, empleado),
-          };
+        const filas = (await this.entrada.entradas(ctx, lote)).map(({ empleado, tab, entrada }) => {
           const resultado = calcularRecibo(entrada, tablas, modo);
           if (!tab) resultado.observaciones.unshift(`Nivel ${empleado.nivel} rango ${empleado.rango} no está en el tabulador.`);
           if (!empleado.pagoCheque && !empleado.cuentaBancaria) resultado.observaciones.push('Sin cuenta bancaria.');
-          return { empleado, resultado };
+          return { empleado, tab, entrada, resultado };
         });
 
         await this.recibos.sequelize!.transaction(async (transaction) => {
           const creados = await this.recibos.bulkCreate(
-            filas.map(({ empleado, resultado: r }) => ({
+            filas.map(({ empleado, tab, entrada, resultado: r }) => ({
               calculoId,
               empleadoId: empleado.id,
               nombre: empleado.nombreCompleto,
@@ -146,6 +101,19 @@ export class CalculoEjecutor {
               cuentaBancaria: empleado.cuentaBancaria,
               pagoCheque: empleado.pagoCheque,
               observaciones: r.observaciones.length ? r.observaciones : null,
+              datos: {
+                numeroIssemym: empleado.numeroIssemym,
+                sci: empleado.sci,
+                sindicalizado: empleado.sindicalizado,
+                banco: empleado.banco,
+                fechaAlta: empleado.fechaAlta,
+                tabulador: tab
+                  ? { vigencia: tab.vigencia, sueldoMensual: tab.sueldoMensual, compensacionMensual: tab.compensacionMensual, gratificacionMensual: tab.gratificacionMensual }
+                  : null,
+                baseTarifaIsr: r.baseTarifa,
+                primeraQuincena: entrada.primeraQuincena ?? null,
+                baseIssemymRetro: r.baseIssemymRetro,
+              },
             })),
             { transaction, returning: ['id', 'empleado_id'] as unknown as true },
           );
@@ -223,14 +191,15 @@ export class CalculoEjecutor {
   }
 }
 
-/** Parte del año que trabajó el empleado, para aguinaldo proporcional. */
-function proporcionAnual(anio: number, empleado: { fechaAlta: string; fechaBaja: string | null }) {
-  const inicioAnio = `${anio}-01-01`;
-  const finAnio = `${anio}-12-31`;
-  const desde = empleado.fechaAlta > inicioAnio ? empleado.fechaAlta : inicioAnio;
-  const hasta = empleado.fechaBaja && empleado.fechaBaja < finAnio ? empleado.fechaBaja : finAnio;
-  if (desde > hasta) return 0;
-  const dias = (Date.parse(hasta) - Date.parse(desde)) / 86_400_000 + 1;
-  const total = (Date.parse(finAnio) - Date.parse(inicioAnio)) / 86_400_000 + 1;
-  return Math.min(1, dias / total);
+/** Copia de parámetros, tarifas, tabulador y claves usados en el cálculo. */
+function evidencia(ctx: ContextoCalculo): Record<string, unknown> {
+  const { tablas } = ctx;
+  return {
+    parametros: tablas.parametros,
+    isr: tablas.isr.map((f) => ({ limiteInferior: f.limiteInferior, cuotaFija: f.cuotaFija, porcentaje: f.porcentaje })),
+    subsidio: tablas.subsidio.map((f) => ({ ingresoDesde: f.ingresoDesde, subsidio: f.subsidio })),
+    tabulador: [...ctx.tabulador.values()].map((t) => [t.vigencia, t.nivel, t.rango, t.sueldoMensual, t.gratificacionMensual, t.compensacionMensual]),
+    claves: [...tablas.conceptos.values()].map((c) => [c.clave, c.naturaleza, c.gravaIsr, c.factorIssemym, c.timbra, c.calculado]),
+    ajustes: ctx.ajustes,
+  };
 }

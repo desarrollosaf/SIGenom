@@ -29,7 +29,10 @@
         <p class="apagado">{{ d.descripcion }} <span class="tenue mono chico">· {{ d.legado }}</span></p>
       </div>
       @if (!d.soloEdicion) {
-        <button type="button" class="boton primario" (click)="abrir()"><app-icono nombre="mas" [tamano]="16" />Agregar</button>
+        <div class="barra-filtros" style="margin: 0">
+          @if (d.clave === 'tabulador') {<button type="button" class="boton" (click)="importando.set(true)">Importar tabla-rang</button>}
+          <button type="button" class="boton primario" (click)="abrir()"><app-icono nombre="mas" [tamano]="16" />Agregar</button>
+        </div>
       }
     </header>
 
@@ -56,6 +59,11 @@
         </tbody>
       </table>
     </div>
+
+    <app-cajon [abierto]="importando()" [ancho]="true" titulo="Importar tabla-rang" [antetitulo]="d.titulo" (cerrar)="importando.set(false)">
+      @if (importando()) {<app-importar-tabla-rang (guardada)="recargar()" />}
+      <ng-container pie><button type="button" class="boton" (click)="importando.set(false)">Cerrar</button></ng-container>
+    </app-cajon>
 
     <app-cajon [abierto]="!!editando()" [titulo]="esNuevo() ? 'Nuevo registro' : 'Editar registro'" [antetitulo]="d.titulo" (cerrar)="editando.set(null)">
       @if (editando(); as e) {

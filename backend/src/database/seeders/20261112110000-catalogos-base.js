@@ -80,8 +80,9 @@ const CONCEPTOS = [
   // del comprobante salen exactas sobre esa suma); la prima de permanencia no, y en los recibos 2025
   // tampoco grava ISR.
   [1, 'SUELDO BASE', 'SUELDO BASE', 'P', 'F', true, 1, '1131', 'sueldo', 102],
-  [12, 'GRATIFICACI', 'GRATIFICACION', 'P', 'F', true, 1, '1341', 'compensacion', 105],
-  [11, 'COMPENSACION', 'COMPENSACION', 'P', 'F', true, 1, null, null, 104],
+  // Tabla-rang: 001 = IMP-NIVEL, 012 = IMP-RAN del rango, 011 = IMP-COMP del rango.
+  [11, 'COMPENSACION', 'COMPENSACION', 'P', 'F', true, 1, null, 'compensacion', 104],
+  [12, 'GRATIFICACI', 'GRATIFICACION', 'P', 'F', true, 1, '1341', 'gratificacion', 105],
   [14, 'PRIMA PERM', 'PRIMA PERM SERV', 'P', 'F', false, 0, '1311', null, 301],
   [17, 'GRAT EXTRA', 'GRATIFICACION EXTRA', 'P', 'F', true, 1, '1321', null, 107],
   // Comprobante de la 2a quincena de febrero 2025: 011/0104, 027/(sin GEM), 034/0512, 047/0107, 516/5565.
@@ -102,8 +103,12 @@ const CONCEPTOS = [
   [522, 'INFONACOT', 'INFONACOT', 'D', 'F', false, 0, '2119', null, 5414],
   // COMP-ISS.W: 531 estancia ISSEMYM, 550 ahorro SCI (descripción tomada del comentario del programa).
   [531, 'ESTANCIA', 'ESTANCIA ISSEMYM', 'D', 'F', false, 0, '2118', null, null],
-  [549, 'SCI OBLIG', 'C OBLIG SIST CAP IND', 'D', 'F', false, 0, '2118', null, 5542],
+  [549, 'SCI OBLIG', 'C OBLIG SIST CAP IND', 'D', 'F', false, 0, '2118', 'sci', 5542],
   [550, 'AHORRO SCI', 'AHORRO SCI', 'D', 'F', false, 0, '2118', null, null],
+  // Cuotas sobre percepciones retroactivas (clave + 100).
+  [611, 'R F S S RE', 'R. FONDO DEL SISTEMA SOLIDARIO DE REPART', 'D', 'E', false, 0, '2118', 'issemym_pens_retro', 6541],
+  [612, 'R SERV SAL', 'R. SERVICIO DE SALUD', 'D', 'E', false, 0, '2118', 'issemym_salud_retro', 6540],
+  [649, 'R C O SCI', 'R. CUOTA OBLIGATORIA S.C.I.', 'D', 'E', false, 0, '2118', 'sci_retro', 6542],
   [555, 'COMEDOR', 'SERVICIO DE COMEDOR', 'D', 'E', false, 0, '2119', null, null],
 ];
 

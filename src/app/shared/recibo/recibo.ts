@@ -42,7 +42,11 @@ import { Icono } from '../icono/icono';
                   <tr>
                     <td class="min mono tenue">{{ c.clave.toString().padStart(3, '0') }}</td>
                     <td class="min mono tenue" title="Clave GEM">{{ c.claveGem ? c.claveGem.toString().padStart(4, '0') : '····' }}</td>
-                    <td>{{ c.descripcion }}</td>
+                    <td>
+                      {{ c.descripcion }}
+                      @if (c.naturaleza === 'P' && c.importe && !c.gravadoIsr) {<span class="insignia" title="No grava ISR">exento</span>}
+                      @if (c.timbra === false) {<span class="insignia ambar" title="No va en el CFDI de nómina">no se timbra</span>}
+                    </td>
                     <td class="der cifra">{{ c.importe | moneda }}</td>
                   </tr>
                 } @empty {

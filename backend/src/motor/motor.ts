@@ -1,5 +1,5 @@
 import { aCentavos, aPesos, porTasa } from './centavos';
-import { isrDeTarifa, subsidioDeTabla } from './isr';
+import { aCincoCentavos, isrDeTarifa, isrMensual, subsidioDeTabla } from './isr';
 import type {
   ConceptoCalculado,
   ConceptoMotor,
@@ -10,6 +10,11 @@ import type {
 } from './tipos';
 
 export type ModoCalculo = 'quincenal' | 'aguinaldo' | 'prima_vacacional';
+
+/** ISR del retroactivo por alta o reingreso, que se calcula aparte (601). */
+const CLAVE_ISR_RETRO = 601;
+/** En la numeración de Cata-pd, las percepciones arriba de 100 son retroactivos (clave + 100). */
+const esRetro = (c: ConceptoMotor) => c.naturaleza === 'P' && c.clave > 100;
 
 interface Linea {
   concepto: ConceptoMotor;
@@ -22,10 +27,10 @@ interface Linea {
  * worker, el simulador de sueldo y las pruebas obtienen exactamente el mismo resultado.
  *
  * Orden quincenal (el mismo de 1CAL-N-P.W):
- *   1. Sueldo y compensación del tabulador, proporcionales a los días pagados.
+ *   1. Sueldo, compensación y gratificación del tabulador, proporcionales a los días pagados.
  *   2. Percepciones y deducciones fijas del empleado, más lo capturado en la quincena.
- *   3. Base gravable e ISR con la tarifa; se resta el subsidio para el empleo.
- *   4. Cuotas ISSEMYM sobre la base de cotización.
+ *   3. Base gravable e ISR con la tarifa (mensual o quincenal); se resta el subsidio para el empleo.
+ *   4. Cuotas ISSEMYM y SCI sobre la base de cotización; las de los retroactivos van aparte.
  *   5. Descuentos a plazo y pensiones alimenticias, al final porque pueden ir sobre el neto.
  */
 export function calcularRecibo(
@@ -68,6 +73,10 @@ export function calcularRecibo(
       calculado('compensacion'),
       Math.round((aCentavos(empleado.compensacionMensual) / 2) * proporcion),
     );
+    agregar(
+      calculado('gratificacion'),
+      Math.round((aCentavos(empleado.gratificacionMensual ?? 0) / 2) * proporcion),
+    );
     for (const fijo of empleado.fijos) {
       const concepto = porId(fijo.conceptoId);
       if (!concepto) continue;
@@ -91,23 +100,58 @@ export function calcularRecibo(
   }
 
   // --- ISR -------------------------------------------------------------------------------------
+  // El retroactivo se integra a la base, salvo que su ISR venga aparte (601, alta o reingreso).
+  const isrRetroAparte = lineas.some((l) => l.concepto.clave === CLAVE_ISR_RETRO && l.centavos > 0);
   const baseIsr = lineas
-    .filter((l) => l.concepto.naturaleza === 'P')
+    .filter((l) => l.concepto.naturaleza === 'P' && !(isrRetroAparte && esRetro(l.concepto)))
     .reduce((suma, l) => suma + l.gravadoCentavos, 0);
-  const isrCausado = isrDeTarifa(baseIsr, tablas.isr);
-  const subsidio = modo === 'quincenal' ? subsidioDeTabla(baseIsr, tablas.subsidio) : 0;
-  // Desde 2024 el subsidio solo reduce el impuesto: si es mayor, la diferencia no se entrega.
-  agregar(calculado('isr'), Math.max(0, isrCausado - subsidio));
+  let isrCausado: number;
+  let subsidio: number;
+  let baseTarifa = baseIsr;
+  if (p.isrMensual && modo === 'quincenal') {
+    const cinco = p.redondeoIsr === 5;
+    const primera = p.isrAjusteMensual && empleado.primeraQuincena;
+    const r = isrMensual(baseIsr, tablas.isr, tablas.subsidio, {
+      redondeo: p.redondeoIsr ?? 1,
+      minimo: aCentavos(p.isrMinimo ?? 0),
+      primera: primera
+        ? { base: cinco ? aCincoCentavos(aCentavos(primera.baseIsr)) : aCentavos(primera.baseIsr), isr: aCentavos(primera.isr) }
+        : null,
+    });
+    ({ subsidio, baseTarifa } = r);
+    isrCausado = r.causado;
+    agregar(calculado('isr'), r.isr);
+  } else {
+    isrCausado = isrDeTarifa(baseIsr, tablas.isr);
+    subsidio = modo === 'quincenal' ? subsidioDeTabla(baseIsr, tablas.subsidio) : 0;
+    // Desde 2024 el subsidio solo reduce el impuesto: si es mayor, la diferencia no se entrega.
+    agregar(calculado('isr'), Math.max(0, isrCausado - subsidio));
+  }
 
   // --- ISSEMYM ---------------------------------------------------------------------------------
   let baseIssemym = 0;
+  let baseIssemymRetro = 0;
   if (modo === 'quincenal') {
-    baseIssemym = lineas
-      .filter((l) => l.concepto.naturaleza === 'P')
-      .reduce((suma, l) => suma + Math.round(l.centavos * l.concepto.factorIssemym), 0);
-    if (p.topeIssemym > 0) baseIssemym = Math.min(baseIssemym, aCentavos(p.topeIssemym));
+    // Sin claves para el retroactivo (611/612), sus cuotas se quedan en las normales.
+    const aparte = !!(calculado('issemym_pens_retro') && calculado('issemym_salud_retro'));
+    const cotiza = (retro: boolean) => {
+      const base = lineas
+        .filter((l) => l.concepto.naturaleza === 'P' && (aparte ? esRetro(l.concepto) === retro : !retro))
+        .reduce((suma, l) => suma + Math.round(l.centavos * l.concepto.factorIssemym), 0);
+      return p.topeIssemym > 0 ? Math.min(base, aCentavos(p.topeIssemym)) : base;
+    };
+    baseIssemym = cotiza(false);
     agregar(calculado('issemym_salud'), porTasa(baseIssemym, p.tasaIssemymSalud));
     agregar(calculado('issemym_pension'), porTasa(baseIssemym, p.tasaIssemymPension));
+    if (aparte) {
+      baseIssemymRetro = cotiza(true);
+      agregar(calculado('issemym_salud_retro'), porTasa(baseIssemymRetro, p.tasaIssemymSalud));
+      agregar(calculado('issemym_pens_retro'), porTasa(baseIssemymRetro, p.tasaIssemymPension));
+    }
+    if (empleado.sci) {
+      agregar(calculado('sci'), porTasa(baseIssemym, p.tasaSci ?? 0));
+      agregar(calculado('sci_retro'), porTasa(baseIssemymRetro, p.tasaSci ?? 0));
+    }
   }
 
   // --- Descuentos a plazo y pensiones ----------------------------------------------------------
@@ -127,6 +171,7 @@ export function calcularRecibo(
   const totalDeducciones = sumar(lineas, 'D');
   const neto = totalPercepciones - totalDeducciones;
   if (neto < 0) observaciones.push('Neto negativo: las deducciones superan a las percepciones.');
+  else if (neto === 0 && totalPercepciones > 0) observaciones.push('Neto en cero: no hay nada que depositar.');
 
   return {
     lineas: lineas
@@ -145,11 +190,14 @@ export function calcularRecibo(
           importe: aPesos(l.centavos),
           gravadoIsr: aPesos(l.gravadoCentavos),
           partida: l.concepto.partida,
+          timbra: l.concepto.timbra,
         }),
       ),
     dias: modo === 'quincenal' ? dias : 0,
     baseIsr: aPesos(baseIsr),
     baseIssemym: aPesos(baseIssemym),
+    baseIssemymRetro: aPesos(baseIssemymRetro),
+    baseTarifa: aPesos(baseTarifa),
     isrCausado: aPesos(isrCausado),
     subsidio: aPesos(subsidio),
     totalPercepciones: aPesos(totalPercepciones),

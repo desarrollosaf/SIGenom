@@ -5,7 +5,8 @@ import { ApiService, mensajeDeError } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
-import type { Calculo, Captura, Diagnostico, PeriodoDetalle, ReciboFila, TipoCalculo } from '../../core/services/modelos';
+import type { Calculo, Diagnostico, PeriodoDetalle, ReciboFila, TipoCalculo } from '../../core/services/modelos';
+import { AjustesQuincena } from '../calculo/ajustes-quincena';
 import { CapturaPagina } from '../captura/captura';
 import { Pagos } from '../pagos/pagos';
 import { Verificacion } from '../verificacion/verificacion';
@@ -37,7 +38,7 @@ const PASOS: Paso[] = [
  */
 @Component({
   selector: 'app-proceso',
-  imports: [NgTemplateOutlet, RouterLink, Icono, CapturaPagina, Verificacion, Pagos, ...FORMATO],
+  imports: [NgTemplateOutlet, RouterLink, Icono, CapturaPagina, AjustesQuincena, Verificacion, Pagos, ...FORMATO],
   templateUrl: './proceso.html',
   styleUrl: './proceso.scss',
 })
@@ -49,7 +50,8 @@ export class Proceso {
 
   protected readonly pasos = PASOS;
   protected readonly detalle = signal<PeriodoDetalle | null>(null);
-  protected readonly capturas = signal<Captura[]>([]);
+  /** Totales de lo capturado, calculados en el servidor (una quincena puede tener más de 10 mil). */
+  private readonly totalesCaptura = signal({ total: 0, personas: 0, p: 0, d: 0, posteriores: [0, 0] });
   protected readonly diagnosticos = signal<Diagnostico[] | null>(null);
   protected readonly observados = signal<ReciboFila[]>([]);
   protected readonly activo = signal<ClavePaso>('captura');
@@ -75,20 +77,11 @@ export class Proceso {
     return ultimo?.estado === 'error' ? ultimo : null;
   });
 
-  /** Capturas hechas después de un cálculo: ese cálculo ya no refleja todo. */
-  private capturasDespues(calculo: Calculo | null) {
-    if (!calculo) return 0;
-    const desde = Date.parse(calculo.iniciadoEl ?? calculo.creadoEl);
-    return this.capturas().filter((c) => Date.parse(c.creadoEl) > desde).length;
-  }
-  protected readonly prenominaVieja = computed(() => this.capturasDespues(this.prenomina()));
-  protected readonly nominaVieja = computed(() => this.capturasDespues(this.nomina()));
+  /** Capturas hechas después de la prenómina y de la nómina: ese cálculo ya no refleja todo. */
+  protected readonly prenominaVieja = computed(() => (this.prenomina() ? this.totalesCaptura().posteriores[0] : 0));
+  protected readonly nominaVieja = computed(() => (this.nomina() ? this.totalesCaptura().posteriores[1] : 0));
 
-  protected readonly resumenCaptura = computed(() => {
-    const l = this.capturas();
-    const suma = (n: 'P' | 'D') => l.filter((c) => c.naturaleza === n).reduce((s, c) => s + c.importe, 0);
-    return { total: l.length, personas: new Set(l.map((c) => c.empleadoId)).size, p: suma('P'), d: suma('D') };
-  });
+  protected readonly resumenCaptura = computed(() => this.totalesCaptura());
   protected readonly resumenDiag = computed(() => {
     const d = this.diagnosticos() ?? [];
     return {
@@ -210,6 +203,12 @@ export class Proceso {
     this.activo.set('captura');
   }
 
+  /** Se recalculó desde Verificación. */
+  protected actualizar(): void {
+    const p = this.contexto.periodo();
+    if (p) this.cargar(p.id);
+  }
+
   protected porcentaje(c: Calculo): number {
     return c.totalEmpleados ? Math.round((c.procesados / c.totalEmpleados) * 100) : 0;
   }
@@ -217,8 +216,10 @@ export class Proceso {
   private cargar(periodoId: number, irAlSugerido = false): void {
     this.api.periodo(periodoId).subscribe((d) => {
       this.detalle.set(d);
-      this.api.capturas(periodoId).subscribe((c) => {
-        this.capturas.set(c);
+      const inicio = (c: Calculo | undefined) => (c ? c.iniciadoEl ?? c.creadoEl : '2999-01-01T00:00:00Z');
+      const terminado = (tipo: TipoCalculo) => d.calculos.find((c) => c.tipo === tipo && c.estado === 'terminado');
+      this.api.resumenCapturas(periodoId, { desde: [inicio(terminado('prenomina')), inicio(terminado('nomina'))] }).subscribe((r) => {
+        this.totalesCaptura.set(r);
         if (irAlSugerido) this.activo.set(this.sugerido());
       });
       const calculo = d.calculos.find((c) => c.estado === 'terminado' && (c.tipo === 'nomina' || c.tipo === 'prenomina'));

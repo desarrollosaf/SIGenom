@@ -3,6 +3,19 @@ import { InjectConnection } from '@nestjs/sequelize';
 import { QueryTypes, Sequelize } from 'sequelize';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TablasService } from '../common/tablas.service';
+import type { TablasMotor } from '../motor/tipos';
+
+type Evidencia = Pick<TablasMotor, 'parametros' | 'isr' | 'subsidio'>;
+
+/** Lo que el navegador necesita para repetir el ISR de un cálculo. */
+const metodoDe = (t: Evidencia) => ({
+  mensual: !!t.parametros.isrMensual,
+  ajuste: !!t.parametros.isrAjusteMensual,
+  redondeo: t.parametros.redondeoIsr ?? 1,
+  minimo: t.parametros.isrMinimo ?? 0,
+  tarifa: t.isr.map((f) => [f.limiteInferior, f.cuotaFija, f.porcentaje]),
+  subsidio: t.subsidio.map((f) => [f.ingresoDesde, f.subsidio]),
+});
 
 /**
  * Datos para el Análisis de ISR: todas las líneas de los recibos pagados de una nómina en un año,
@@ -22,14 +35,14 @@ export class AnalisisService {
 
     // El cálculo vigente de cada quincena y tipo (nómina, aguinaldo, prima): lo que sí se pagó.
     const calculos = `
-      SELECT DISTINCT ON (c.periodo_id, c.tipo) c.id, c.tipo, p.anio, p.quincena, p.estado
+      SELECT DISTINCT ON (c.periodo_id, c.tipo) c.id, c.tipo, p.anio, p.quincena, p.estado, c.tablas
       FROM calculos c JOIN periodos p ON p.id = c.periodo_id
       WHERE p.tipo_nomina = :tipo AND p.anio = :anio AND c.estado = 'terminado'
         AND c.tipo IN ('nomina', 'aguinaldo', 'prima_vacacional')
       ORDER BY c.periodo_id, c.tipo, c.id DESC`;
 
     const [periodos, recibos, lineas, anios] = await Promise.all([
-      consulta<{ id: number; tipo: string; anio: number; quincena: number; estado: string }>(`${calculos}`),
+      consulta<{ id: number; tipo: string; anio: number; quincena: number; estado: string; tablas: Evidencia | null }>(`${calculos}`),
       consulta<{ id: number; calculo_id: number; empleado_id: number; nombre: string; rfc: string; adscripcion: string | null; nivel: number; rango: number; dias: string }>(`
         SELECT r.id, r.calculo_id, r.empleado_id, r.nombre, r.rfc, a.descripcion adscripcion, r.nivel, r.rango, r.dias
         FROM recibos r LEFT JOIN adscripciones a ON a.id = r.adscripcion_id
@@ -42,8 +55,10 @@ export class AnalisisService {
     ]);
 
     let tablas;
+    let quincenales;
     try {
       tablas = await this.tablas.paraNomina(tipoNomina, `${anio}-12-31`);
+      quincenales = await this.tablas.paraNomina(tipoNomina, `${anio}-12-31`, 'Q');
     } catch {
       throw new BadRequestException(`No hay tarifa de ISR vigente para ${anio}.`);
     }
@@ -62,6 +77,15 @@ export class AnalisisService {
       return { id: r.id, e: indiceEmpleado.get(r.empleado_id)!, p: indicePeriodo.get(r.calculo_id)!, dias: Number(r.dias) };
     });
 
+    // Cada cálculo con las tablas que guardó; los anteriores a que se guardaran usaron la tarifa quincenal.
+    const metodos: { llave: string; metodo: ReturnType<typeof metodoDe> }[] = [];
+    const indiceMetodo = periodos.map((p) => {
+      const metodo = metodoDe(p.tablas ?? quincenales);
+      const llave = JSON.stringify(metodo);
+      const i = metodos.findIndex((m) => m.llave === llave);
+      return i >= 0 ? i : metodos.push({ llave, metodo }) - 1;
+    });
+
     return {
       tipoNomina,
       anio,
@@ -72,7 +96,8 @@ export class AnalisisService {
       conceptos: [...tablas.conceptos.values()]
         .sort((a, b) => b.naturaleza.localeCompare(a.naturaleza) || a.clave - b.clave)
         .map((c) => ({ id: c.id, clave: c.clave, descripcion: c.descripcion, naturaleza: c.naturaleza, gravaIsr: c.gravaIsr, calculado: c.calculado })),
-      periodos: periodos.map((p) => ({ tipo: p.tipo, anio: p.anio, quincena: p.quincena, cerrado: p.estado === 'cerrado' })),
+      periodos: periodos.map((p, i) => ({ tipo: p.tipo, anio: p.anio, quincena: p.quincena, cerrado: p.estado === 'cerrado', metodo: indiceMetodo[i] })),
+      metodos: metodos.map((m) => m.metodo),
       empleados,
       recibos: listaRecibos,
       // [índice del recibo, concepto, importe en centavos]

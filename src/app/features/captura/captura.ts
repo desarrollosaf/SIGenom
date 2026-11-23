@@ -31,7 +31,7 @@ export class CapturaPagina {
   private readonly campoImporte = viewChild<ElementRef<HTMLInputElement>>('importe');
 
   protected readonly capturas = signal<Captura[]>([]);
-  protected readonly origenes = signal<{ clave: string; nombre: string }[]>([]);
+  protected readonly origenes = signal<{ clave: string; nombre: string; sistema: boolean }[]>([]);
   protected readonly empleado = signal<EmpleadoResumen | null>(null);
   protected readonly filtro = signal('');
   protected readonly filtroOrigen = signal('');
@@ -43,21 +43,14 @@ export class CapturaPagina {
   protected archivo: File | null = null;
 
   protected readonly capturables = computed(() => this.contexto.conceptos().filter((c) => !c.calculado));
-  protected readonly visibles = computed(() => {
-    const q = this.filtro().trim().toLowerCase();
-    return this.capturas().filter(
-      (c) =>
-        (!this.filtroOrigen() || c.origen === this.filtroOrigen()) &&
-        (!q || c.nombre.toLowerCase().includes(q) || c.curp.toLowerCase().includes(q) || String(c.clave) === q),
-    );
-  });
-  protected readonly totales = computed(() => {
-    const v = this.visibles();
-    const suma = (n: 'P' | 'D') => v.filter((c) => c.naturaleza === n).reduce((s, c) => s + c.importe, 0);
-    return { p: suma('P'), d: suma('D'), personas: new Set(v.map((c) => c.empleadoId)).size };
-  });
+  /** Una quincena puede traer más de 10 mil movimientos: el filtro y los totales los resuelve el servidor. */
+  protected readonly visibles = computed(() => this.capturas());
+  protected readonly totales = signal({ total: 0, personas: 0, p: 0, d: 0 });
   /** Lo capturado a la persona elegida, para ver de un vistazo qué ya tiene. */
-  protected readonly delEmpleado = computed(() => this.capturas().filter((c) => c.empleadoId === this.empleado()?.id));
+  protected readonly delEmpleado = signal<Captura[]>([]);
+  private espera: ReturnType<typeof setTimeout> | null = null;
+  /** Los que se eligen al importar un archivo; los demás los pone el sistema. */
+  protected readonly origenesArchivo = computed(() => this.origenes().filter((o) => !o.sistema));
   protected readonly nombreOrigen = computed(() => new Map(this.origenes().map((o) => [o.clave, o.nombre.split(' (')[0]])));
 
   constructor() {
@@ -65,13 +58,28 @@ export class CapturaPagina {
     effect(() => {
       const p = this.contexto.periodo();
       this.empleado.set(null);
-      if (p) this.cargar(p.id);
-      else this.capturas.set([]);
+      if (!p) this.capturas.set([]);
+    });
+    // Lista y totales con el filtro; se espera a que termine de escribir.
+    effect(() => {
+      const p = this.contexto.periodo();
+      const filtro = { q: this.filtro().trim(), origen: this.filtroOrigen() };
+      if (this.espera) clearTimeout(this.espera);
+      if (p) this.espera = setTimeout(() => this.cargar(p.id, filtro), filtro.q ? 300 : 0);
+    });
+    effect(() => {
+      const p = this.contexto.periodo();
+      const e = this.empleado();
+      if (p && e) this.api.capturas(p.id, { empleadoId: e.id }).subscribe((c) => this.delEmpleado.set(c));
+      else this.delEmpleado.set([]);
     });
   }
 
-  private cargar(periodoId: number): void {
-    this.api.capturas(periodoId).subscribe((c) => this.capturas.set(c));
+  private cargar(periodoId: number, filtro = { q: this.filtro().trim(), origen: this.filtroOrigen() }): void {
+    this.api.capturas(periodoId, filtro).subscribe((c) => this.capturas.set(c));
+    this.api.resumenCapturas(periodoId, filtro).subscribe((r) => this.totales.set(r));
+    const e = this.empleado();
+    if (e) this.api.capturas(periodoId, { empleadoId: e.id }).subscribe((c) => this.delEmpleado.set(c));
   }
 
   protected elegir(e: EmpleadoResumen): void {

@@ -58,7 +58,7 @@ export class DispersionService {
       return { nombre, contenido: ['"Nombre","RFC","Cuenta","Importe"', ...filas].join('\r\n') + '\r\n' };
     }
 
-    const p = new Map((await this.parametros.findAll({ where: { clave: { [Op.like]: 'banamex_%' } } })).map((x) => [x.clave, x.valor.trim()]));
+    const p = new Map((await this.parametros.findAll({ where: { clave: { [Op.like]: 'banamex_%' } }, order: [['vigencia', 'ASC']] })).map((x) => [x.clave, x.valor.trim()]));
     const faltan = ['banamex_cliente', 'banamex_sucursal_cargo', 'banamex_cuenta_cargo'].filter((c) => !p.get(c));
     if (faltan.length) {
       throw new BadRequestException(`Captura en Catálogos > Parámetros los datos del contrato: ${faltan.join(', ')}.`);
