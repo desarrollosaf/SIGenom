@@ -27,6 +27,29 @@ export interface ConceptoOpcion {
   naturaleza: 'P' | 'D';
   periodicidad: 'F' | 'E';
   calculado: string | null;
+  gravaIsr: boolean;
+  timbra: boolean;
+  cotizaIssemym: boolean;
+}
+
+/** El recibo de una persona antes y después de un movimiento que todavía no se guarda. */
+export interface ImpactoMovimiento {
+  antes: { baseIsr: number; isr: number; issemym: number; neto: number };
+  despues: { baseIsr: number; isr: number; issemym: number; neto: number };
+}
+
+/** Una clave que en una quincena grava o se timbra distinto del catálogo (null = como el catálogo). */
+export interface AjusteQuincena {
+  conceptoId: number;
+  clave: number;
+  descripcion: string;
+  naturaleza: 'P' | 'D';
+  catalogo: { gravaIsr: boolean; timbra: boolean };
+  gravaIsr: boolean | null;
+  timbra: boolean | null;
+  motivo: string | null;
+  registradoPor: string;
+  actualizadoEl: string;
 }
 
 export interface Periodo {
@@ -128,9 +151,9 @@ export interface Movimiento {
 
 export interface FichaEmpleado extends EmpleadoResumen {
   datosPersonales: DatosPersonales | null;
-  tabulador: { sueldoMensual: number; compensacionMensual: number } | null;
+  tabulador: { vigencia: string; sueldoMensual: number; compensacionMensual: number; gratificacionMensual: number } | null;
   sucursal: { sucursal: number; tipo: string } | null;
-  fijos: { id: number; importe: number; concepto: ConceptoCorto }[];
+  fijos: { id: number; importe: number; gravaIsr: boolean | null; timbra: boolean | null; concepto: ConceptoCorto }[];
   descuentosPlazo: {
     id: number;
     importeQuincenal: number;
@@ -158,7 +181,7 @@ export type OrigenClave = 'calculado' | 'fija' | 'plazo' | 'captura';
 export interface QuincenaEmpleado {
   periodo: { id: number | null; nombre: string; estado: EstadoPeriodo | null };
   dias: number;
-  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; origenes: OrigenClave[] }[];
+  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; timbra: boolean; factorIssemym: number; origenes: OrigenClave[] }[];
   baseIsr: number;
   baseIssemym: number;
   isrCausado: number;
@@ -167,6 +190,64 @@ export interface QuincenaEmpleado {
   totalDeducciones: number;
   neto: number;
   observaciones: string[];
+}
+
+/** Un recibo calculado sin guardarse. */
+export interface ReciboPrueba {
+  lineas: { conceptoId: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number }[];
+  totalPercepciones: number;
+  totalDeducciones: number;
+  neto: number;
+}
+
+export interface OpcionAjuste {
+  conceptoId: number;
+  clave: number;
+  descripcion: string;
+  gravaIsr: boolean;
+  importe: number;
+}
+
+export interface AjusteNeto {
+  empleadoId: number;
+  nombre: string;
+  recibo: ReciboPrueba;
+  percepciones: OpcionAjuste[];
+  deducciones: OpcionAjuste[];
+  ajustes: { id: number; clave: number; descripcion: string; importe: number; referencia: string | null; registradoPor: string }[];
+}
+
+export interface VistaRetroactivo {
+  desde: string;
+  quincenas: number;
+  empleados: number;
+  total: number;
+  sinNivel: number;
+  yaRetro: number;
+  claves: { clave: number; descripcion: string; empleados: number; total: number }[];
+  muestra: { empleadoId: number; nombre: string; quincenas: number; total: number }[];
+}
+
+export interface ResultadoTablaRang {
+  vigencia: string;
+  niveles: number;
+  nuevos: number;
+  cambian: number;
+  iguales: number;
+  faltan: number[];
+  muestra: { nivel: number; antes: number | null; despues: number }[];
+  aplicado: boolean;
+}
+
+export interface MetodoIsr {
+  /** Tarifa mensual (doble de la quincena entre dos) en lugar de quincenal. */
+  mensual: boolean;
+  /** En la 2a quincena, ISR del mes menos lo retenido en la 1a. */
+  ajuste: boolean;
+  redondeo: number;
+  minimo: number;
+  tarifa: [number, number, number][];
+  subsidio: [number, number][];
 }
 
 /** Datos del Análisis de ISR. Las líneas van compactas: [índice del recibo, concepto, centavos]. */
@@ -178,7 +259,9 @@ export interface DatosAnalisis {
   tarifa: [number, number, number][];
   subsidio: [number, number][];
   conceptos: { id: number; clave: number; descripcion: string; naturaleza: 'P' | 'D'; gravaIsr: boolean; calculado: string | null }[];
-  periodos: { tipo: TipoCalculo; anio: number; quincena: number; cerrado: boolean }[];
+  periodos: { tipo: TipoCalculo; anio: number; quincena: number; cerrado: boolean; metodo: number }[];
+  /** Con qué tablas y método se calculó cada quincena. */
+  metodos: MetodoIsr[];
   empleados: { id: number; nombre: string; rfc: string; adscripcion: string; nivel: number; rango: number }[];
   recibos: { id: number; e: number; p: number; dias: number }[];
   lineas: [number, number, number][];
@@ -208,6 +291,11 @@ export interface Captura {
   concepto: string;
   naturaleza: 'P' | 'D';
   importe: number;
+  /** null = como la quincena o el catálogo. */
+  gravaIsr: boolean | null;
+  timbra: boolean | null;
+  /** La calcula el sistema (la captura es solo una diferencia): sus marcas no se cambian aquí. */
+  calculado: boolean;
   origen: string;
   referencia: string | null;
   registradoPor: string;
@@ -252,7 +340,7 @@ export interface ReciboDetalle {
   cuentaBancaria: string | null;
   pagoCheque: boolean;
   observaciones: string[];
-  conceptos: { clave: number; claveGem: number | null; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number }[];
+  conceptos: { clave: number; claveGem: number | null; descripcion: string; naturaleza: 'P' | 'D'; importe: number; gravadoIsr: number; timbra: boolean }[];
 }
 
 export interface Diagnostico {
@@ -372,6 +460,9 @@ export interface RegistroBitacora {
   antes: Record<string, unknown> | null;
   despues: Record<string, unknown> | null;
   fecha: string;
+  persona: string | null;
+  clave: string | null;
+  quincena: string | null;
 }
 
 export const NOMBRE_CALCULO: Record<TipoCalculo, string> = {

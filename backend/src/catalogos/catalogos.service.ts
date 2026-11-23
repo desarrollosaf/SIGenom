@@ -68,6 +68,9 @@ export class CatalogosService {
     if (def.soloEdicion) throw new BadRequestException('Este catálogo solo se edita.');
     const registro = await this.buscar(def, id);
     const antes = registro.get({ plain: true }) as Record<string, unknown>;
+    if (clave === 'parametros' && (await def.modelo.count({ where: { clave: antes.clave as string } })) === 1) {
+      throw new BadRequestException('Es el único valor de ese parámetro; cámbialo en lugar de eliminarlo.');
+    }
     await registro.destroy();
     await this.bitacora.registrar({ usuario, entidad: `catalogo:${clave}`, entidadId: id, accion: 'baja', antes });
   }
@@ -97,6 +100,9 @@ export class CatalogosService {
         naturaleza: c.naturaleza,
         periodicidad: c.periodicidad,
         calculado: c.calculado,
+        gravaIsr: c.gravaIsr,
+        timbra: c.timbra,
+        cotizaIssemym: c.factorIssemym > 0,
       })),
     };
   }

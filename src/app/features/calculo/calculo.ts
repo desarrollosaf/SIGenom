@@ -11,13 +11,14 @@ import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO } from '../../shared/formato';
 import { Icono, NombreIcono } from '../../shared/icono/icono';
 import { Recibo } from '../../shared/recibo/recibo';
+import { AjustesQuincena } from './ajustes-quincena';
 
 const POR_PAGINA = 50;
 
 /** Cálculo de prenómina y nómina (1CAL-N-P.W), aguinaldo y prima (1CAL-A-P.W) y revisión de recibos. */
 @Component({
   selector: 'app-calculo',
-  imports: [FormsModule, RouterLink, Icono, Cajon, Recibo, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, Cajon, Recibo, AjustesQuincena, ...FORMATO],
   templateUrl: './calculo.html',
   styleUrl: './calculo.scss',
 })

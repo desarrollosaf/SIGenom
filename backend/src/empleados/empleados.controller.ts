@@ -96,7 +96,7 @@ export class EmpleadosController {
     @Body() dto: ImporteDto,
     @Usuario() u: UsuarioActual,
   ) {
-    return this.empleados.fijarConcepto(id, conceptoId, dto.importe, u.usuario);
+    return this.empleados.fijarConcepto(id, conceptoId, dto, u.usuario);
   }
 
   @Delete(':id/conceptos/:conceptoId')

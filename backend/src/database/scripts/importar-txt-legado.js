@@ -5,7 +5,11 @@
  *
  *   npm run importar:txt-legado -- /ruta/TXT_v2                         # revisa, no escribe
  *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar               # carga (base sin empleados)
+ *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar --solo-capturas
+ *       (con --quincena N o --tipo P, solo esas.) Rehace las capturas del sistema anterior en las quincenas ABIERTAS (p. ej. al cargar otra
+ *       tabla-rang). No toca empleados, quincenas cerradas, cálculos ni lo que se capturó a mano.
  *   npm run importar:txt-legado -- /ruta/TXT_v2 --aplicar --reemplazar  # borra empleados y nóminas antes
+ *       Si ya hay cálculos hechos en SIGenom se niega, salvo que se agregue --borrar-calculos.
  *
  * Qué deja en la base:
  *   - Empleados (por CURP y tipo de nómina) con los datos de su último recibo, adscripciones y
@@ -13,8 +17,10 @@
  *   - Por cada archivo, un cálculo tipo `legado` con los recibos tal como se pagaron: es la
  *     evidencia para auditoría y la referencia para comparar (npm run comparar:legado).
  *   - Por cada quincena ordinaria, un periodo abierto con las percepciones y deducciones del
- *     sistema anterior como capturas, excepto las que calcula SIGenom (ISR y cuotas ISSEMYM).
- *     Al calcular la quincena, SIGenom vuelve a sacar el ISR y el ISSEMYM sobre esos importes.
+ *     sistema anterior como capturas, excepto las que calcula SIGenom: ISR y cuotas ISSEMYM, y
+ *     sueldo, compensación y gratificación, que salen del tabulador (cargar antes la tabla-rang con
+ *     npm run importar:tabla-rang; el nivel son los dos últimos dígitos del puesto). Si lo pagado no
+ *     coincide con el tabulador vigente, se captura solo la diferencia.
  *
  * Los TXT traen CURP, RFC y cuentas bancarias: se cargan solo en la base local, no se guardan en
  * el repositorio.
@@ -30,8 +36,8 @@ const path = require('node:path');
 const { Sequelize, QueryTypes } = require('sequelize');
 const config = require('../migrations-config')[process.env.NODE_ENV ?? 'development'];
 
-/** Claves que SIGenom calcula: no se capturan, se recalculan. 611/612 son el ISSEMYM de los retroactivos. */
-const CALCULADAS = new Set([501, 511, 512, 611, 612]);
+/** Claves que SIGenom calcula: no se capturan, se recalculan. 611/612/649 son las cuotas de los retroactivos. */
+const CALCULADAS = new Set([501, 511, 512, 549, 611, 612, 649]);
 
 /**
  * Deducido de los recibos 2025 (no se tiene Cata-pd): las cuotas 511/512 salen exactas sobre la
@@ -161,6 +167,19 @@ async function main() {
   const carpeta = process.argv[2];
   const aplicar = process.argv.includes('--aplicar');
   const reemplazar = process.argv.includes('--reemplazar');
+  const soloCapturas = process.argv.includes('--solo-capturas');
+  const it = process.argv.indexOf('--tipo');
+  const soloTipo = it > 0 ? String(process.argv[it + 1] ?? '').toUpperCase() : null;
+  if (it > 0 && (!soloCapturas || !/^[A-Z]$/.test(soloTipo))) {
+    console.error('--tipo (P, D…) se usa junto con --solo-capturas.');
+    process.exit(1);
+  }
+  const iq = process.argv.indexOf('--quincena');
+  const soloQuincena = iq > 0 ? Number(process.argv[iq + 1]) : null;
+  if (iq > 0 && (!soloCapturas || !(soloQuincena >= 1 && soloQuincena <= 24))) {
+    console.error('--quincena (1 a 24) se usa junto con --solo-capturas.');
+    process.exit(1);
+  }
   if (!carpeta || !fs.existsSync(carpeta) || !fs.statSync(carpeta).isDirectory()) {
     console.error('Uso: npm run importar:txt-legado -- <carpeta con los TXT> [--aplicar] [--reemplazar]');
     process.exit(1);
@@ -192,17 +211,18 @@ async function main() {
     for (const r of n.recibos) {
       const llave = `${r.tipo}|${r.curp}`;
       let e = empleados.get(llave);
-      if (!e) { e = { primera: n, quincenas: [], sci: false }; empleados.set(llave, e); }
+      if (!e) { e = { primera: n, quincenas: [], recibos: [], sci: false }; empleados.set(llave, e); }
       e.ultimo = r;
       e.ultima = n;
       e.quincenas.push(n);
+      e.recibos.push({ n, r });
       if (r.lineas.some((l) => l.clave === 549)) e.sci = true;
     }
   }
   for (const n of nominas.filter((x) => !x.q)) {
     for (const r of n.recibos) {
       if (!empleados.has(`${r.tipo}|${r.curp}`)) {
-        empleados.set(`${r.tipo}|${r.curp}`, { primera: n, ultima: n, ultimo: r, quincenas: [], sci: false, soloExtra: true });
+        empleados.set(`${r.tipo}|${r.curp}`, { primera: n, ultima: n, ultimo: r, quincenas: [], recibos: [], sci: false, soloExtra: true });
       }
     }
   }
@@ -223,7 +243,19 @@ async function main() {
   const qi = db.getQueryInterface();
   try {
     const [{ total }] = await db.query('SELECT count(*)::int total FROM empleados', { type: QueryTypes.SELECT });
-    if (total > 0 && !reemplazar) {
+    if (reemplazar) {
+      const [{ calculos, cerradas }] = await db.query(
+        `SELECT (SELECT count(*) FROM calculos WHERE tipo <> 'legado')::int calculos, (SELECT count(*) FROM periodos WHERE estado = 'cerrado')::int cerradas`,
+        { type: QueryTypes.SELECT });
+      if (calculos + cerradas > 0) {
+        console.log(`\n--reemplazar borraría ${calculos} cálculos hechos en SIGenom y ${cerradas} quincenas cerradas.`);
+        if (aplicar && !process.argv.includes('--borrar-calculos')) {
+          console.error('No se hizo nada. Para rehacer solo las capturas usa --solo-capturas; si de verdad quieres borrarlos, agrega --borrar-calculos (respalda antes).');
+          process.exit(1);
+        }
+      }
+    }
+    if (total > 0 && !reemplazar && !soloCapturas) {
       console.log(`\nLa base ya tiene ${total} empleados. Usa --reemplazar para borrarlos (con sus quincenas y cálculos) antes de cargar.`);
       if (aplicar) process.exit(1);
     }
@@ -238,7 +270,7 @@ async function main() {
       const sql = (q, replacements) => db.query(q, { replacements, transaction });
       if (reemplazar) {
         for (const tabla of ['recibo_conceptos', 'recibos', 'calculos', 'capturas', 'periodos', 'movimientos_personal', 'cuentas_contables',
-          'descuentos_plazo', 'empleado_conceptos', 'datos_personales', 'sucursales_bancarias', 'empleados', 'tabulador', 'puestos', 'adscripciones']) {
+          'descuentos_plazo', 'empleado_conceptos', 'datos_personales', 'sucursales_bancarias', 'empleados', 'puestos', 'adscripciones']) {
           await sql(`DELETE FROM ${tabla}`);
         }
       }
@@ -256,13 +288,37 @@ async function main() {
         await sql(`INSERT INTO puestos (clave, descripcion, activo, created_at, updated_at)
                    VALUES (:clave, :d, true, now(), now()) ON CONFLICT (clave) DO NOTHING`, { clave, d: `PUESTO ${clave}` });
       }
-      // El sueldo (001) y la gratificación (012) vienen del sistema anterior como capturas; el nivel 0
-      // con importes en cero evita que SIGenom los vuelva a sumar desde el tabulador.
+      // Nivel 0 en ceros: para quien no se encuentra en la tabla-rang (diputados, casos especiales);
+      // a ellos el sueldo les llega completo como captura.
       const rangos = new Set([...empleados.values()].map((e) => e.ultimo.rango));
       for (const rango of rangos) {
-        await sql(`INSERT INTO tabulador (nivel, rango, sueldo_mensual, compensacion_mensual, created_at, updated_at)
-                   VALUES (0, :rango, 0, 0, now(), now()) ON CONFLICT (nivel, rango) DO NOTHING`, { rango });
+        await sql(`INSERT INTO tabulador (vigencia, nivel, rango, sueldo_mensual, compensacion_mensual, gratificacion_mensual, created_at, updated_at)
+                   VALUES ('2000-01-01', 0, :rango, 0, 0, 0, now(), now()) ON CONFLICT (vigencia, nivel, rango) DO NOTHING`, { rango });
       }
+      const tabulador = await db.query(
+        `SELECT vigencia::text vigencia, nivel, rango, round(sueldo_mensual * 100)::int s, round(compensacion_mensual * 100)::int c,
+                round(gratificacion_mensual * 100)::int g FROM tabulador ORDER BY vigencia`,
+        { type: QueryTypes.SELECT, transaction },
+      );
+      /** Renglones del tabulador vigentes a una fecha, por "nivel-rango" (importes mensuales en centavos). */
+      const vigentes = new Map();
+      const tabuladorAl = (fecha) => {
+        if (!vigentes.has(fecha)) {
+          const m = new Map();
+          for (const t of tabulador) if (t.vigencia <= fecha) m.set(`${t.nivel}-${t.rango}`, t);
+          vigentes.set(fecha, m);
+        }
+        return vigentes.get(fecha);
+      };
+      /**
+       * El nivel son los dos últimos dígitos del puesto (1CAL-A-S.W: INTE(SUBSTRING(puesto,6,2))). Con él y el
+       * rango, 001, 011 y 012 salen exactos en todos los recibos de enero a agosto de 2025.
+       */
+      const niveles = new Set(tabulador.map((x) => x.nivel));
+      const nivelDe = (r) => {
+        const m = /^.{5}(\d{2})$/.exec(r.puesto ?? '');
+        return m && niveles.has(Number(m[1])) ? Number(m[1]) : 0;
+      };
 
       const existentes = await db.query('SELECT tipo_nomina, clave, descripcion FROM conceptos', { type: QueryTypes.SELECT, transaction });
       const descripcion = new Map(existentes.map((c) => [`${c.tipo_nomina}|${c.clave}`, c.descripcion]));
@@ -281,15 +337,90 @@ async function main() {
                    VALUES (:tipo, :clave, :abrev, :desc, :naturaleza, 'F', :grava, :factor, NULL, NULL, NULL, true, now(), now())
                    ON CONFLICT (tipo_nomina, clave) DO UPDATE SET grava_isr = EXCLUDED.grava_isr,
                      descripcion = EXCLUDED.descripcion, abreviatura = EXCLUDED.abreviatura,
-                     factor_issemym = EXCLUDED.factor_issemym, activo = true, updated_at = now()`, {
+                     factor_issemym = EXCLUDED.factor_issemym, activo = true, updated_at = now()
+                   -- Si la clave ya viene de Cata-pd (npm run importar:cata-pd), se respeta.
+                   WHERE conceptos.descripcion LIKE 'CLAVE %'`, {
           tipo, clave, naturaleza, desc, abrev: desc.slice(0, 12),
           grava: naturaleza === 'P' && GRAVAN_ISR.has(original(clave)),
           factor: naturaleza === 'P' && COTIZAN_ISSEMYM.has(original(clave)) ? 1 : 0,
         });
       }
-      const conceptos = await db.query('SELECT id, tipo_nomina, clave, descripcion, naturaleza, grava_isr, partida FROM conceptos',
+      const conceptos = await db.query('SELECT id, tipo_nomina, clave, descripcion, naturaleza, grava_isr, factor_issemym, partida, calculado, timbra FROM conceptos',
         { type: QueryTypes.SELECT, transaction });
       const concepto = new Map(conceptos.map((c) => [`${c.tipo_nomina}|${c.clave}`, c]));
+      /** Conceptos que SIGenom saca del tabulador y el campo del tabulador de cada uno. */
+      const DEL_TABULADOR = { sueldo: 's', compensacion: 'c', gratificacion: 'g' };
+      const delTabulador = conceptos.filter((c) => DEL_TABULADOR[c.calculado]);
+
+      const tope = Number((await db.query(
+        `SELECT valor FROM parametros WHERE clave = 'topeIssemym' AND vigencia <= '2025-12-31' ORDER BY vigencia DESC LIMIT 1`,
+        { type: QueryTypes.SELECT, transaction }))[0]?.valor ?? 0) * 100;
+      const topar = (base) => (tope > 0 ? Math.min(base, tope) : base);
+      /**
+       * Capturas de un recibo: lo que SIGenom no calcula, más la diferencia entre lo pagado y lo que
+       * SIGenom va a calcular (tabulador, cuotas ISSEMYM y SCI). Así el recibo sale igual, salvo el ISR.
+       */
+      const capturasDe = (n, r, { periodoId, empleadoId, nivel, rango, sci }) => {
+        const salida = [];
+        const agregar = (c, centavos, nota = '') => {
+          if (centavos !== 0) {
+            salida.push({
+              periodo_id: periodoId, empleado_id: empleadoId, concepto_id: c.id, importe: centavos / 100, origen: 'legado',
+              referencia: `${n.archivo} folio ${r.folio}${nota}`.slice(0, 80), registrado_por: 'LEGADO', ...t,
+            });
+          }
+        };
+        for (const l of r.lineas) {
+          const c = concepto.get(`${r.tipo}|${l.clave}`);
+          if (!CALCULADAS.has(l.clave) && !DEL_TABULADOR[c.calculado]) agregar(c, l.importe);
+        }
+        const pagado = (clave) => r.lineas.find((l) => l.clave === clave)?.importe ?? 0;
+        // Quincena completa con el nivel y rango que el empleado tiene en SIGenom, que es con lo que se calcula.
+        const tab = tabuladorAl(n.fin).get(`${nivel}-${rango}`);
+        for (const c of delTabulador.filter((x) => x.tipo_nomina === r.tipo)) {
+          agregar(c, pagado(c.clave) - Math.round((tab?.[DEL_TABULADOR[c.calculado]] ?? 0) / 2), ': diferencia contra tabulador');
+        }
+        const base = (retro) => topar(r.lineas
+          .filter((l) => l.naturaleza === 'P' && l.clave > 100 === retro)
+          .reduce((s, l) => s + Math.round(l.importe * Number(concepto.get(`${r.tipo}|${l.clave}`).factor_issemym)), 0));
+        const [normal, retro] = [base(false), base(true)];
+        for (const [clave, monto] of [[511, normal * 0.061], [512, normal * 0.04625], [611, retro * 0.061], [612, retro * 0.04625],
+          [549, sci ? normal * 0.014 : 0], [649, sci ? retro * 0.014 : 0]]) {
+          const c = concepto.get(`${r.tipo}|${clave}`);
+          if (c) agregar(c, pagado(clave) - Math.round(monto), ': diferencia contra cuota');
+        }
+        return salida;
+      };
+
+      if (soloCapturas) {
+        const abiertas = await db.query(`SELECT id, tipo_nomina, fecha_fin::text fin FROM periodos WHERE estado <> 'cerrado'`, { type: QueryTypes.SELECT, transaction });
+        const enBase = await db.query('SELECT id, curp, tipo_nomina, nivel, rango, sci FROM empleados', { type: QueryTypes.SELECT, transaction });
+        const porLlave = new Map(enBase.map((e) => [`${e.tipo_nomina}|${e.curp}`, e]));
+        for (const n of ordinarias) {
+          if ((soloQuincena && n.q.quincena !== soloQuincena) || (soloTipo && n.tipo !== soloTipo)) continue;
+          const periodo = abiertas.find((p) => p.tipo_nomina === n.tipo && p.fin === n.fin);
+          if (!periodo) { console.log(`  ${n.archivo}: quincena cerrada o inexistente, no se toca`); continue; }
+          await sql(`DELETE FROM capturas WHERE periodo_id = :id AND origen = 'legado'`, { id: periodo.id });
+          const nuevas = n.recibos.flatMap((r) => {
+            const e = porLlave.get(`${r.tipo}|${r.curp}`);
+            return e ? capturasDe(n, r, { periodoId: periodo.id, empleadoId: e.id, nivel: e.nivel, rango: e.rango, sci: e.sci }) : [];
+          });
+          await insertar(qi, 'capturas', nuevas, transaction);
+          console.log(`  ${n.archivo}: ${nuevas.length} capturas`);
+        }
+        // Queda en la bitácora, como lo que se hace desde las pantallas.
+        await db.query(
+          `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'periodo', NULL, 'importa_txt_legado', CAST(:despues AS jsonb), now())`,
+          { replacements: { despues: JSON.stringify({ modo: 'solo-capturas', tipo: soloTipo ?? 'todos', quincena: soloQuincena ?? 'abiertas' }) }, transaction },
+        );
+        console.log('\nListo: solo se rehicieron las capturas del sistema anterior en las quincenas abiertas.');
+        return;
+      }
+
+      // Nivel de cada empleado: el de su puesto en el último recibo.
+      const nivelEmpleado = new Map([...empleados].map(([llave, e]) => [llave, nivelDe(e.ultimo)]));
+      const conNivel = [...nivelEmpleado.values()].filter((x) => x > 0).length;
+      console.log(`Con nivel (del puesto): ${conNivel} de ${empleados.size} empleados (los demás quedan en nivel 0 y su sueldo se captura).`);
 
       // --- Empleados -----------------------------------------------------------------------------
       const filas = [...empleados.entries()].map(([, e]) => {
@@ -300,7 +431,8 @@ async function main() {
         return {
           curp: r.curp, rfc: r.rfc,
           apellido_paterno: nombre.paterno.slice(0, 50), apellido_materno: nombre.materno?.slice(0, 50) ?? null, nombres: nombre.nombres.slice(0, 60),
-          tipo_nomina: r.tipo, adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO', nivel: 0, rango: r.rango,
+          tipo_nomina: r.tipo, adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO',
+          nivel: nivelEmpleado.get(`${r.tipo}|${r.curp}`), rango: r.rango,
           numero_issemym: r.numeroIssemym, sindicalizado: false, sci: e.sci,
           estado: baja ? 'baja' : 'activo', fecha_alta: e.primera.inicio, fecha_baja: baja,
           fecha_ingreso_gobierno: r.fechaAlta, banco: null, cuenta_bancaria: r.cuenta, pago_cheque: !r.cuenta, ...t,
@@ -356,8 +488,10 @@ async function main() {
           const p = r.lineas.filter((l) => l.naturaleza === 'P');
           return {
             calculo_id: calculo.id, empleado_id: idEmpleado.get(`${r.tipo}|${r.curp}`), nombre: r.nombre, curp: r.curp, rfc: r.rfc,
-            adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO', nivel: 0, rango: r.rango, dias: n.q ? 15 : 0,
-            base_isr: p.filter((l) => GRAVAN_ISR.has(original(l.clave))).reduce((s, l) => s + l.importe, 0) / 100,
+            adscripcion_id: r.adscripcion, puesto_clave: r.puesto || 'SIN-PUESTO', nivel: nivelDe(r), rango: r.rango, dias: n.q ? 15 : 0,
+            // El retroactivo no entra a la base del 501 cuando su ISR va aparte (601).
+            base_isr: p.filter((l) => concepto.get(`${r.tipo}|${l.clave}`).grava_isr && !(l.clave > 100 && r.lineas.some((x) => x.clave === 601)))
+              .reduce((s, l) => s + l.importe, 0) / 100,
             base_issemym: p.filter((l) => COTIZAN_ISSEMYM.has(original(l.clave))).reduce((s, l) => s + l.importe, 0) / 100,
             isr_causado: (r.lineas.find((l) => l.clave === 501)?.importe ?? 0) / 100, subsidio: 0,
             total_percepciones: r.tp / 100, total_deducciones: r.td / 100, neto: r.neto / 100,
@@ -376,13 +510,14 @@ async function main() {
             conceptosRecibo.push({
               recibo_id: idRecibo.get(empleadoId), concepto_id: c.id, clave: l.clave, descripcion: c.descripcion, naturaleza: l.naturaleza,
               importe: l.importe / 100, gravado_isr: l.naturaleza === 'P' && c.grava_isr ? l.importe / 100 : 0, partida: c.partida,
+              timbra: c.timbra,
             });
-            if (n.q && !CALCULADAS.has(l.clave)) {
-              capturasQuincena.push({
-                periodo_id: periodoId, empleado_id: empleadoId, concepto_id: c.id, importe: l.importe / 100,
-                origen: 'legado', referencia: `${n.archivo} folio ${r.folio}`, registrado_por: 'LEGADO', ...t,
-              });
-            }
+          }
+          if (n.q) {
+            const e = empleados.get(`${r.tipo}|${r.curp}`);
+            capturasQuincena.push(...capturasDe(n, r, {
+              periodoId, empleadoId, nivel: nivelEmpleado.get(`${r.tipo}|${r.curp}`), rango: e.ultimo.rango, sci: e.sci,
+            }));
           }
         }
         await insertar(qi, 'recibo_conceptos', conceptosRecibo, transaction);
@@ -390,6 +525,11 @@ async function main() {
         capturas += capturasQuincena.length;
         process.stdout.write(`  ${n.archivo} cargado\n`);
       }
+      // Queda en la bitácora, como lo que se hace desde las pantallas.
+      await db.query(
+        `INSERT INTO bitacora (usuario, entidad, entidad_id, accion, despues, created_at) VALUES ('SCRIPT', 'periodo', NULL, 'importa_txt_legado', CAST(:despues AS jsonb), now())`,
+        { replacements: { despues: JSON.stringify({ modo: reemplazar ? 'reemplazar' : 'carga', empleados: empleados.size, quincenas: periodos.size, recibos: totalRecibos }) }, transaction },
+      );
       console.log(`\nListo: ${empleados.size} empleados, ${periodos.size} quincenas abiertas, ${totalRecibos} recibos del sistema anterior y ${capturas} capturas.`);
     });
   } finally {

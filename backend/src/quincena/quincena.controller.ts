@@ -17,7 +17,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import type { Response } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -25,10 +25,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PUEDEN_OPERAR, ROL_ADMINISTRADOR, Usuario, type UsuarioActual } from '../common/usuario-actual';
 import type { TipoCalculo } from '../database/models/nomina.models';
 import { CalculosService } from './calculos.service';
-import { CapturasService, ORIGENES } from './capturas.service';
+import { AjusteNetoService } from './ajuste-neto.service';
+import { CapturasService, ORIGENES, ORIGENES_SISTEMA } from './capturas.service';
 import type { Origen } from './capturas.service';
 import { PeriodosService } from './periodos.service';
 import { ReciboPdfService } from './recibo-pdf.service';
+import { RetroactivoService } from './retroactivo.service';
 
 class CrearPeriodoDto {
   @IsString() @MaxLength(1) tipoNomina: string;
@@ -46,6 +48,51 @@ class CapturaDto {
   @IsInt() conceptoId: number;
   @IsNumber({ maxDecimalPlaces: 2 }) importe: number;
   @IsOptional() @IsString() @MaxLength(80) referencia?: string;
+  /** Solo para este movimiento; null = como la quincena o el catálogo. */
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+}
+
+class MarcasDto {
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+}
+
+class ProbarCapturaDto {
+  @IsInt() empleadoId: number;
+  @IsInt() conceptoId: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) importe: number;
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+  /** Como clave fija (sustituye a la que ya tenga) en lugar de captura. */
+  @IsOptional() @IsBoolean() fija?: boolean;
+}
+
+class AjusteDto {
+  @IsInt() conceptoId: number;
+  /** null = como diga el catálogo. */
+  @ValidateIf((o) => o.gravaIsr !== null) @IsBoolean() gravaIsr: boolean | null;
+  @ValidateIf((o) => o.timbra !== null) @IsBoolean() timbra: boolean | null;
+  @IsOptional() @IsString() @MaxLength(200) motivo?: string;
+}
+
+class ProbarAjusteDto {
+  @IsInt() empleadoId: number;
+  @IsInt() conceptoId: number;
+  /** Sin importe, se busca el mínimo que deja el neto en `objetivo`. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) importe?: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(1000000) objetivo?: number;
+}
+
+class AplicarAjusteDto {
+  @IsInt() empleadoId: number;
+  @IsInt() conceptoId: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) importe: number;
+  @IsOptional() @IsString() @MaxLength(80) motivo?: string;
+}
+
+class RetroactivoDto {
+  @IsDateString() desde: string;
 }
 
 class CalcularDto {
@@ -60,6 +107,8 @@ export class QuincenaController {
     private readonly capturas: CapturasService,
     private readonly calculos: CalculosService,
     private readonly pdf: ReciboPdfService,
+    private readonly ajusteNeto: AjusteNetoService,
+    private readonly retroactivo: RetroactivoService,
   ) {}
 
   // --- Periodos -----------------------------------------------------------------------------
@@ -98,16 +147,51 @@ export class QuincenaController {
     return this.periodos.cerrar(id, u.usuario);
   }
 
+  @Get('periodos/:id/ajustes')
+  ajustes(@Param('id', ParseIntPipe) id: number) {
+    return this.periodos.listarAjustes(id);
+  }
+
+  @Post('periodos/:id/ajustes')
+  @Roles(...PUEDEN_OPERAR)
+  ajustar(@Param('id', ParseIntPipe) id: number, @Body() dto: AjusteDto, @Usuario() u: UsuarioActual) {
+    return this.periodos.guardarAjuste(id, { ...dto, gravaIsr: dto.gravaIsr ?? null, timbra: dto.timbra ?? null }, u.usuario);
+  }
+
   // --- Captura quincenal --------------------------------------------------------------------
 
   @Get('capturas/origenes')
   origenes() {
-    return Object.entries(ORIGENES).map(([clave, nombre]) => ({ clave, nombre }));
+    const lista = (o: Record<string, string>, sistema: boolean) => Object.entries(o).map(([clave, nombre]) => ({ clave, nombre, sistema }));
+    return [...lista(ORIGENES, false), ...lista(ORIGENES_SISTEMA, true)];
   }
 
   @Get('periodos/:id/capturas')
-  listarCapturas(@Param('id', ParseIntPipe) id: number, @Query('empleadoId') empleadoId?: string) {
-    return this.capturas.listar(id, empleadoId ? Number(empleadoId) : undefined);
+  listarCapturas(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('empleadoId') empleadoId?: string,
+    @Query('origen') origen?: string,
+    @Query('q') q?: string,
+    @Query('limite') limite?: string,
+  ) {
+    return this.capturas.listar(id, { empleadoId: empleadoId ? Number(empleadoId) : undefined, origen, q, limite: limite ? Number(limite) : undefined });
+  }
+
+  /** Totales de lo capturado (de todo, no solo de lo que cabe en la lista). */
+  @Get('periodos/:id/capturas/resumen')
+  resumenCapturas(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('empleadoId') empleadoId?: string,
+    @Query('origen') origen?: string,
+    @Query('q') q?: string,
+    @Query('desde') desde?: string | string[],
+  ) {
+    return this.capturas.resumen(id, {
+      empleadoId: empleadoId ? Number(empleadoId) : undefined,
+      origen,
+      q,
+      desde: desde === undefined ? [] : Array.isArray(desde) ? desde : [desde],
+    });
   }
 
   @Post('periodos/:id/capturas')
@@ -129,11 +213,56 @@ export class QuincenaController {
     return this.capturas.importar(id, decodificar(archivo.buffer), origen ?? 'otro', u.usuario);
   }
 
+  /** Cómo cambiaría el recibo con ese movimiento, sin guardarlo. */
+  @Post('periodos/:id/capturas/probar')
+  @HttpCode(HttpStatus.OK)
+  probarCaptura(@Param('id', ParseIntPipe) id: number, @Body() dto: ProbarCapturaDto) {
+    return this.ajusteNeto.impacto(id, dto);
+  }
+
+  @Patch('capturas/:id')
+  @Roles(...PUEDEN_OPERAR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  marcarCaptura(@Param('id', ParseIntPipe) id: number, @Body() dto: MarcasDto, @Usuario() u: UsuarioActual) {
+    return this.capturas.marcar(id, { gravaIsr: dto.gravaIsr ?? null, timbra: dto.timbra ?? null }, u.usuario);
+  }
+
   @Delete('capturas/:id')
   @Roles(...PUEDEN_OPERAR)
   @HttpCode(HttpStatus.NO_CONTENT)
   borrarCaptura(@Param('id', ParseIntPipe) id: number, @Usuario() u: UsuarioActual) {
     return this.capturas.eliminar(id, u.usuario);
+  }
+
+  // --- Ajuste de neto y retroactivo ---------------------------------------------------------
+
+  @Get('periodos/:id/ajuste-neto/:empleadoId')
+  verAjusteNeto(@Param('id', ParseIntPipe) id: number, @Param('empleadoId', ParseIntPipe) empleadoId: number) {
+    return this.ajusteNeto.ver(id, empleadoId);
+  }
+
+  @Post('periodos/:id/ajuste-neto/probar')
+  @HttpCode(HttpStatus.OK)
+  probarAjusteNeto(@Param('id', ParseIntPipe) id: number, @Body() dto: ProbarAjusteDto) {
+    return this.ajusteNeto.probar(id, dto);
+  }
+
+  @Post('periodos/:id/ajuste-neto')
+  @Roles(...PUEDEN_OPERAR)
+  aplicarAjusteNeto(@Param('id', ParseIntPipe) id: number, @Body() dto: AplicarAjusteDto, @Usuario() u: UsuarioActual) {
+    return this.ajusteNeto.aplicar(id, dto, u.usuario);
+  }
+
+  @Post('periodos/:id/retroactivo/vista-previa')
+  @HttpCode(HttpStatus.OK)
+  vistaRetroactivo(@Param('id', ParseIntPipe) id: number, @Body() dto: RetroactivoDto) {
+    return this.retroactivo.vista(id, dto.desde.slice(0, 10));
+  }
+
+  @Post('periodos/:id/retroactivo')
+  @Roles(...PUEDEN_OPERAR)
+  aplicarRetroactivo(@Param('id', ParseIntPipe) id: number, @Body() dto: RetroactivoDto, @Usuario() u: UsuarioActual) {
+    return this.retroactivo.aplicar(id, dto.desde.slice(0, 10), u.usuario);
   }
 
   // --- Cálculo y recibos --------------------------------------------------------------------

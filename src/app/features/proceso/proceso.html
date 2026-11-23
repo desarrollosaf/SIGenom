@@ -74,6 +74,7 @@
           @if (prenominaVieja()) {
             <p class="aviso ambar"><app-icono nombre="alerta" [tamano]="18" />Capturaste {{ prenominaVieja() }} movimientos después de la prenómina. Al continuar, vuelve a calcularla.</p>
           }
+          <app-ajustes-quincena [periodoId]="contexto.periodo()!.id" [puede]="puedeCalcular() && contexto.abierto()" />
           <app-captura [incrustado]="true" />
         }
 
@@ -94,12 +95,12 @@
             @if (!resumenDiag().errores.length && !resumenDiag().avisos.length) {
               <p class="aviso verde grande"><app-icono nombre="listo" [tamano]="22" /><span><strong>Todo correcto.</strong> Ninguna revisión encontró problemas. Puedes calcular la nómina definitiva.</span></p>
             } @else if (resumenDiag().errores.length) {
-              <p class="aviso rojo grande"><app-icono nombre="alerta" [tamano]="22" /><span><strong>{{ resumenDiag().errores.length }} {{ resumenDiag().errores.length === 1 ? 'revisión con errores' : 'revisiones con errores' }}.</strong> Conviene corregirlos en la ficha de cada persona y volver a calcular la prenómina. Si ya lo sabes, puedes continuar de todos modos.</span></p>
+              <p class="aviso rojo grande"><app-icono nombre="alerta" [tamano]="22" /><span><strong>{{ resumenDiag().errores.length }} {{ resumenDiag().errores.length === 1 ? 'revisión con errores' : 'revisiones con errores' }}.</strong> Corrígelos y vuelve a calcular. Con netos negativos o en cero no se podrá cerrar la quincena.</span></p>
             } @else {
               <p class="aviso ambar grande"><app-icono nombre="alerta" [tamano]="22" /><span><strong>Sin errores, {{ resumenDiag().avisos.length }} avisos.</strong> Revísalos; no impiden pagar.</span></p>
             }
           }
-          <app-verificacion [incrustado]="true" />
+          <app-verificacion [incrustado]="true" (recalculado)="actualizar()" />
         }
 
         @case ('nomina') {

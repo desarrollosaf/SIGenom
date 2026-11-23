@@ -22,6 +22,7 @@
     "seed:undo": "sequelize-cli db:seed:undo:all",
     "importar:cata-pd": "node src/database/scripts/importar-cata-pd.js",
     "importar:txt-legado": "node src/database/scripts/importar-txt-legado.js",
+    "importar:tabla-rang": "node src/database/scripts/importar-tabla-rang.js",
     "comparar:legado": "node src/database/scripts/comparar-legado.js"
   },
   "dependencies": {

@@ -67,6 +67,13 @@ export class Captura extends Model {
   @Column(dinero('importe'))
   declare importe: number;
 
+  /** null = como el ajuste de la quincena o el catálogo. */
+  @Column(DataType.BOOLEAN)
+  declare gravaIsr: boolean | null;
+
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean | null;
+
   @Column(DataType.STRING(20))
   declare origen: string;
 
@@ -114,6 +121,10 @@ export class Calculo extends Model {
 
   @Column(DataType.TEXT)
   declare error: string | null;
+
+  /** Evidencia: parámetros, tarifas, tabulador y claves con que se hizo el cálculo. */
+  @Column(DataType.JSONB)
+  declare tablas: Record<string, unknown> | null;
 
   @Column(DataType.STRING(20))
   declare solicitadoPor: string;
@@ -197,6 +208,10 @@ export class Recibo extends Model {
   @Column(DataType.JSONB)
   declare observaciones: string[] | null;
 
+  /** Evidencia: datos del empleado y del cálculo como estaban ese día (tabulador, SCI, bases…). */
+  @Column(DataType.JSONB)
+  declare datos: Record<string, unknown> | null;
+
   @HasMany(() => ReciboConcepto)
   declare conceptos: ReciboConcepto[];
 }
@@ -234,4 +249,43 @@ export class ReciboConcepto extends Model {
 
   @Column(DataType.STRING(16))
   declare partida: string | null;
+
+  /** Si va en el CFDI, como quedó al calcular (catálogo más el ajuste de la quincena). */
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean;
+}
+
+/**
+ * Ajuste de una clave solo para una quincena: que no grave ISR o que no se timbre, sin cambiar el
+ * catálogo. null en un campo = como diga el catálogo.
+ */
+@Table({ tableName: 'periodo_conceptos', underscored: true, timestamps: true })
+export class PeriodoConcepto extends Model {
+  @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
+  declare id: number;
+
+  @ForeignKey(() => Periodo)
+  @Column(DataType.INTEGER)
+  declare periodoId: number;
+
+  @ForeignKey(() => Concepto)
+  @Column(DataType.INTEGER)
+  declare conceptoId: number;
+
+  @BelongsTo(() => Concepto)
+  declare concepto: Concepto;
+
+  @Column(DataType.BOOLEAN)
+  declare gravaIsr: boolean | null;
+
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean | null;
+
+  @Column(DataType.STRING(200))
+  declare motivo: string | null;
+
+  @Column(DataType.STRING(20))
+  declare registradoPor: string;
+
+  declare updatedAt: Date;
 }

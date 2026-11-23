@@ -65,6 +65,9 @@ export class CrearEmpleadoDto extends ActualizarEmpleadoDto {
 
 export class ImporteDto {
   @IsNumber({ maxDecimalPlaces: 2 }) importe: number;
+  /** Solo para esta persona; null = como la quincena o el catálogo. */
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
 }
 
 export class DescuentoPlazoDto {

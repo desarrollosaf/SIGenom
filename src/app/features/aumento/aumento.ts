@@ -4,20 +4,24 @@ import { ApiService, mensajeDeError } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { FORMATO } from '../../shared/formato';
+import { Retroactivo } from './retroactivo';
 
-type Renglon = { id: number; nivel: number; rango: number; sueldoAntes: number; sueldoDespues: number; compensacionAntes: number; compensacionDespues: number };
+type Renglon = {
+  id: number; nivel: number; rango: number; sueldoAntes: number; sueldoDespues: number;
+  compensacionAntes: number; compensacionDespues: number; gratificacionAntes: number; gratificacionDespues: number;
+};
 
 /** Aumento salarial general (1CAL-A-S.W): se ve el tabulador antes y después, y solo entonces se aplica. */
 @Component({
   selector: 'app-aumento',
-  imports: [FormsModule, ...FORMATO],
+  imports: [FormsModule, Retroactivo, ...FORMATO],
   template: `
     <div class="pagina angosta">
       <header class="encabezado">
         <div>
           <p class="antetitulo">Configuración</p>
           <h1 class="titulo">Aumento salarial general</h1>
-          <p class="apagado">Sube el tabulador por porcentaje. Quien tenga ese nivel y rango lo recibe en el siguiente cálculo; no se toca a cada empleado.</p>
+          <p class="apagado">Sube el tabulador por porcentaje desde una fecha. Se guarda como una vigencia nueva: las quincenas anteriores conservan su tabulador y no se toca a cada empleado.</p>
         </div>
       </header>
 
@@ -25,11 +29,16 @@ type Renglon = { id: number; nivel: number; rango: number; sueldoAntes: number; 
         <div class="formulario">
           <div><label class="etiqueta">Porcentaje</label><input class="campo cifra" type="number" step="0.01" min="0" [(ngModel)]="porcentaje" /></div>
           <div>
+            <label class="etiqueta">Vigente desde</label>
+            <input class="campo" type="date" [(ngModel)]="vigencia" />
+            <p class="ayuda">Vacío: hoy. Las quincenas que terminan desde esa fecha usan el tabulador nuevo.</p>
+          </div>
+          <div>
             <label class="etiqueta">Niveles</label>
             <input class="campo mono" placeholder="Todos, o p. ej. 1-10, 14" [(ngModel)]="niveles" />
             <p class="ayuda">Vacío: todo el tabulador.</p>
           </div>
-          <div class="ancho"><label class="casilla"><input type="checkbox" [(ngModel)]="compensacion" />Aplicar también a la compensación</label></div>
+          <div class="ancho"><label class="casilla"><input type="checkbox" [(ngModel)]="compensacion" />Aplicar también a la compensación (011) y la gratificación (012)</label></div>
         </div>
         <div class="acciones" style="margin-top: 14px; justify-content: flex-end">
           <button type="button" class="boton" [disabled]="!porcentaje" (click)="previsualizar()">Ver cómo queda</button>
@@ -49,7 +58,7 @@ type Renglon = { id: number; nivel: number; rango: number; sueldoAntes: number; 
           </div>
           <div class="tabla-marco" style="max-height: 60vh">
             <table class="tabla">
-              <thead><tr><th>Nivel</th><th>Rango</th><th class="der">Sueldo actual</th><th class="der">Sueldo nuevo</th><th class="der">Compensación nueva</th></tr></thead>
+              <thead><tr><th>Nivel</th><th>Rango</th><th class="der">Sueldo actual</th><th class="der">Sueldo nuevo</th><th class="der">Compensación nueva</th><th class="der">Gratificación nueva</th></tr></thead>
               <tbody>
                 @for (r of renglones(); track r.id) {
                   <tr>
@@ -57,6 +66,7 @@ type Renglon = { id: number; nivel: number; rango: number; sueldoAntes: number; 
                     <td class="der cifra tenue">{{ r.sueldoAntes | moneda }}</td>
                     <td class="der cifra principal">{{ r.sueldoDespues | moneda }}</td>
                     <td class="der cifra">{{ r.compensacionDespues | moneda }}</td>
+                    <td class="der cifra">{{ r.gratificacionDespues | moneda }}</td>
                   </tr>
                 }
               </tbody>
@@ -64,6 +74,7 @@ type Renglon = { id: number; nivel: number; rango: number; sueldoAntes: number; 
           </div>
         </section>
       }
+      <app-retroactivo />
     </div>
   `,
 })
@@ -76,10 +87,11 @@ export class Aumento {
   protected porcentaje: number | null = null;
   protected niveles = '';
   protected compensacion = false;
+  protected vigencia = '';
   protected readonly renglones = signal<Renglon[]>([]);
   protected readonly empleados = signal(0);
   protected readonly costo = computed(() =>
-    this.renglones().reduce((s, r) => s + (r.sueldoDespues - r.sueldoAntes) + (r.compensacionDespues - r.compensacionAntes), 0),
+    this.renglones().reduce((s, r) => s + (r.sueldoDespues - r.sueldoAntes) + (r.compensacionDespues - r.compensacionAntes) + (r.gratificacionDespues - r.gratificacionAntes), 0),
   );
 
   /** "1-10, 14" -> [1..10, 14] */
@@ -96,7 +108,7 @@ export class Aumento {
   }
 
   private datos() {
-    return { porcentaje: Number(this.porcentaje), niveles: this.listaNiveles(), incluirCompensacion: this.compensacion };
+    return { porcentaje: Number(this.porcentaje), niveles: this.listaNiveles(), incluirCompensacion: this.compensacion, vigencia: this.vigencia || undefined };
   }
 
   protected previsualizar(): void {

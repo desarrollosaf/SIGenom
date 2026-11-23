@@ -48,6 +48,11 @@
             <span class="valor">{{ f.tabulador?.compensacionMensual ?? null | moneda }}</span>
           </div>
           <div class="cifra-bloque">
+            <span class="antetitulo">Gratificación mensual</span>
+            <span class="valor">{{ f.tabulador?.gratificacionMensual ?? null | moneda }}</span>
+            @if (f.tabulador; as t) {<p class="nota">Tabulador vigente desde {{ t.vigencia | fecha }}</p>}
+          </div>
+          <div class="cifra-bloque">
             <span class="antetitulo">Bruto quincenal del tabulador</span>
             <span class="valor">{{ sueldoQuincenal() | moneda }}</span>
           </div>
@@ -90,9 +95,9 @@
           @for (o of q.observaciones; track o) {<p class="nota ambar chico" style="margin-bottom: 8px">{{ o }}</p>}
           <div class="tabla-marco">
             <table class="tabla">
-              <thead><tr><th class="min">Clave</th><th>Concepto</th><th>De dónde sale</th><th class="der">Percepción</th><th class="der">Deducción</th></tr></thead>
+              <thead><tr><th class="min">Clave</th><th>Concepto</th><th>De dónde sale</th><th>Grava</th><th>Cotiza</th><th>Timbra</th><th class="der">Percepción</th><th class="der">Deducción</th></tr></thead>
               <tbody>
-                @for (l of q.lineas; track l.conceptoId) {
+                @for (l of q.lineas; track $index) {
                   <tr>
                     <td class="mono tenue">{{ l.clave.toString().padStart(3, '0') }}</td>
                     <td>{{ l.descripcion }}</td>
@@ -101,21 +106,49 @@
                         <span class="insignia sin-punto origen" [class.azul]="o === 'calculado'" [class.ambar]="o === 'captura'" [class.verde]="o === 'fija' || o === 'plazo'">{{ nombresOrigen[o] }}</span>
                       }
                     </td>
+                    <td class="chico" [class.tenue]="!l.gravadoIsr">{{ l.naturaleza === 'D' ? '' : !l.gravadoIsr ? 'No' : l.gravadoIsr === l.importe ? 'Sí' : (l.gravadoIsr | moneda) }}</td>
+                    <td class="chico" [class.tenue]="!l.factorIssemym">{{ l.naturaleza === 'D' ? '' : l.factorIssemym ? 'Sí' : 'No' }}</td>
+                    <td class="chico" [class.tenue]="!l.timbra">{{ l.timbra ? 'Sí' : 'No' }}</td>
                     <td class="der cifra">{{ l.naturaleza === 'P' ? (l.importe | moneda) : '' }}</td>
                     <td class="der cifra negativo">{{ l.naturaleza === 'D' ? (l.importe | moneda) : '' }}</td>
                   </tr>
                 }
               </tbody>
               <tfoot>
-                <tr><td colspan="3">Totales</td><td class="der cifra">{{ q.totalPercepciones | moneda }}</td><td class="der cifra">{{ q.totalDeducciones | moneda }}</td></tr>
-                <tr><td colspan="3">Neto estimado</td><td class="der cifra" colspan="2" style="color: var(--acento); font-size: 1rem">{{ q.neto | moneda }}</td></tr>
+                <tr><td colspan="6">Totales</td><td class="der cifra">{{ q.totalPercepciones | moneda }}</td><td class="der cifra">{{ q.totalDeducciones | moneda }}</td></tr>
+                <tr><td colspan="6">Neto estimado</td><td class="der cifra" colspan="2" style="color: var(--acento); font-size: 1rem">{{ q.neto | moneda }}</td></tr>
               </tfoot>
             </table>
           </div>
           <p class="tenue chico" style="margin-top: 8px">
             Base ISR {{ q.baseIsr | moneda }} · ISR causado {{ q.isrCausado | moneda }} · subsidio {{ q.subsidio | moneda }} · base ISSEMYM {{ q.baseIssemym | moneda }}.
-            El sueldo y la compensación salen del tabulador (nivel {{ f.nivel }}, rango {{ f.rango }}).
+            El sueldo, la compensación y la gratificación salen del tabulador (nivel {{ f.nivel }}, rango {{ f.rango }}).
           </p>
+        }
+
+        @if (puede() && quincena()?.periodo?.id) {
+          <section class="tarjeta con-relleno" style="margin-top: 20px">
+            <h2 class="titulo-chico">Capturar en esta quincena</h2>
+            <p class="apagado chico" style="margin-bottom: 12px">Solo se paga o descuenta en la {{ quincena()!.periodo.nombre }}.</p>
+            <div class="formulario uno">
+              <div class="barra-filtros" style="margin: 0; align-items: flex-end">
+                <select class="campo crece" [(ngModel)]="nuevaCaptura.conceptoId" aria-label="Clave a capturar">
+                  <option [ngValue]="null">Elige la clave…</option>
+                      <optgroup label="Percepciones">
+                        @for (c of conceptos(); track c.id) {@if (c.naturaleza === 'P') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}}
+                      </optgroup>
+                      <optgroup label="Deducciones">
+                        @for (c of conceptos(); track c.id) {@if (c.naturaleza === 'D') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}}
+                      </optgroup>
+                </select>
+                <input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevaCaptura.importe" aria-label="Importe a capturar" />
+                <button type="button" class="boton primario" [disabled]="!nuevaCaptura.conceptoId || !nuevaCaptura.importe || guardando()" (click)="capturar()">Capturar</button>
+              </div>
+              @if (clave(nuevaCaptura.conceptoId); as c) {
+                <app-marcas-clave [concepto]="c" [periodoId]="quincena()?.periodo?.id ?? null" [empleadoId]="f.id" [importe]="nuevaCaptura.importe" [fija]="false" [(gravaIsr)]="nuevaCaptura.gravaIsr" [(timbra)]="nuevaCaptura.timbra" />
+              }
+            </div>
+          </section>
         }
 
         <h2 class="titulo-chico" style="margin: 28px 0 4px">Claves fijas</h2>
@@ -124,13 +157,21 @@
         </p>
         <div class="tabla-marco">
           <table class="tabla">
-            <thead><tr><th class="min">Clave</th><th>Concepto</th><th>Tipo</th><th class="der">Importe quincenal</th><th class="min"></th></tr></thead>
+            <thead><tr><th class="min">Clave</th><th>Concepto</th><th>Tipo</th><th>Grava / Timbra</th><th class="der">Importe quincenal</th><th class="min"></th></tr></thead>
             <tbody>
               @for (c of f.fijos; track c.id) {
                 <tr>
                   <td class="mono tenue">{{ c.concepto.clave.toString().padStart(3, '0') }}</td>
                   <td>{{ c.concepto.nombre }}</td>
                   <td><span class="insignia sin-punto" [class.verde]="c.concepto.naturaleza === 'P'" [class.rojo]="c.concepto.naturaleza === 'D'">{{ c.concepto.naturaleza === 'P' ? 'Percepción' : 'Deducción' }}</span></td>
+                  <td class="chico">
+                    @if (clave(c.concepto.id); as k) {
+                      @if (k.naturaleza === 'P') {{{ (c.gravaIsr ?? k.gravaIsr) ? 'Grava' : 'No grava' }} · }
+                      {{ (c.timbra ?? k.timbra) ? 'Se timbra' : 'No se timbra' }}
+                      @if (c.gravaIsr !== null || c.timbra !== null) {<span class="insignia sin-punto ambar">Cambiada</span>}
+                      @if (puede()) {<button type="button" class="boton fantasma chico" (click)="abrirMarcas(c)">Cambiar</button>}
+                    }
+                  </td>
                   <td class="der">
                     @if (puede()) {
                       <input class="campo cifra importe" type="number" step="0.01" [value]="c.importe" (change)="cambiarFijo(c.concepto.id, $any($event.target).value, c.importe)" [attr.aria-label]="'Importe de ' + c.concepto.nombre" />
@@ -145,13 +186,13 @@
                   </td>
                 </tr>
               } @empty {
-                <tr><td colspan="5" class="tenue">Sin percepciones ni deducciones fijas.</td></tr>
+                <tr><td colspan="6" class="tenue">Sin percepciones ni deducciones fijas.</td></tr>
               }
             </tbody>
             @if (puede()) {
               <tfoot>
                 <tr>
-                  <td colspan="3">
+                  <td colspan="4">
                     <select class="campo" [(ngModel)]="nuevoFijo.conceptoId" aria-label="Concepto a asignar">
                       <option [ngValue]="null">Asignar otro concepto…</option>
                       @for (c of conceptos(); track c.id) {
@@ -162,6 +203,13 @@
                   <td class="der"><input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevoFijo.importe" aria-label="Importe" /></td>
                   <td><button type="button" class="boton chico primario" [disabled]="!nuevoFijo.conceptoId || !nuevoFijo.importe || guardando()" (click)="agregarFijo()">Agregar</button></td>
                 </tr>
+                @if (nuevoFijo.conceptoId) {
+                  <tr><td colspan="6">
+              @if (clave(nuevoFijo.conceptoId); as c) {
+                <app-marcas-clave [concepto]="c" [periodoId]="quincena()?.periodo?.id ?? null" [empleadoId]="f.id" [importe]="nuevoFijo.importe" [fija]="true" [(gravaIsr)]="nuevoFijo.gravaIsr" [(timbra)]="nuevoFijo.timbra" />
+              }
+                  </td></tr>
+                }
               </tfoot>
             }
           </table>
@@ -313,7 +361,20 @@
     }
 
     <!-- Cajones -->
-    <app-cajon [abierto]="cajon() === 'editar'" titulo="Editar empleado" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
+    <app-cajon [abierto]="cajon() === 'marcas'" titulo="Grava y timbra" [antetitulo]="marcasFijo?.nombre ?? ''" (cerrar)="cajon.set(null)">
+    @if (marcasFijo; as m) {
+      <p class="apagado chico" style="margin-bottom: 14px">Solo para esta persona, en cada quincena mientras tenga la clave. El catálogo no cambia.</p>
+      @if (clave(m.conceptoId); as k) {
+        <app-marcas-clave [concepto]="k" [periodoId]="quincena()?.periodo?.id ?? null" [empleadoId]="f.id" [importe]="m.importe" [fija]="true" [(gravaIsr)]="m.gravaIsr" [(timbra)]="m.timbra" />
+      }
+    }
+    <ng-container pie>
+      <button type="button" class="boton" (click)="cajon.set(null)">Cancelar</button>
+      <button type="button" class="boton primario" [disabled]="guardando()" (click)="guardarMarcas()">Guardar</button>
+    </ng-container>
+  </app-cajon>
+
+  <app-cajon [abierto]="cajon() === 'editar'" titulo="Editar empleado" [antetitulo]="f.nombre" (cerrar)="cajon.set(null)">
       <div class="formulario">
         <div><label class="etiqueta">RFC</label><input class="campo mono" [(ngModel)]="edicion['rfc']" /></div>
         <div><label class="etiqueta">Apellido paterno</label><input class="campo" [(ngModel)]="edicion['apellidoPaterno']" /></div>

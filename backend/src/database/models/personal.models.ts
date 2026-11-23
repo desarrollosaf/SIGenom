@@ -168,6 +168,13 @@ export class EmpleadoConcepto extends Model {
 
   @Column(dinero('importe'))
   declare importe: number;
+
+  /** null = como el ajuste de la quincena o el catálogo. */
+  @Column(DataType.BOOLEAN)
+  declare gravaIsr: boolean | null;
+
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean | null;
 }
 
 @Table({ tableName: 'descuentos_plazo', underscored: true, timestamps: true })

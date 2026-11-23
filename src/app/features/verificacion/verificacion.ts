@@ -1,14 +1,18 @@
-import { Component, computed, effect, inject, signal, input } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ApiService } from '../../core/services/api.service';
+import { ApiService, mensajeDeError } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
 import type { Diagnostico } from '../../core/services/modelos';
+import { Cajon } from '../../shared/cajon/cajon';
 import { Icono } from '../../shared/icono/icono';
+import { AjusteNetoPanel } from './ajuste-neto';
 
 /** Diagnósticos antes de pagar: 1DIAG-CA, 1Diag-ap, 1VERI-CA, 1VER-NOM y 1RE-E-CB en una sola vista. */
 @Component({
   selector: 'app-verificacion',
-  imports: [RouterLink, Icono],
+  imports: [RouterLink, Icono, Cajon, AjusteNetoPanel],
   template: `
     <div [class.pagina]="!incrustado()">
       @if (!incrustado()) {
@@ -37,6 +41,13 @@ import { Icono } from '../../shared/icono/icono';
           <p class="nota" style="margin-bottom: 16px"><app-icono nombre="info" [tamano]="16" />Algunas revisiones necesitan un cálculo: corre la prenómina para verlas todas.</p>
         }
 
+        @if (pendientes() || calculando()) {
+          <div class="tarjeta con-relleno recalcular" role="status">
+            <span>{{ calculando() ? 'Calculando la ' + nombreCalculo() + '…' : 'Guardaste ajustes que el último cálculo todavía no refleja.' }}</span>
+            <button type="button" class="boton primario" [disabled]="calculando() || !puedeCalcular()" (click)="recalcular()">Volver a calcular la {{ nombreCalculo() }}</button>
+          </div>
+        }
+
         <div class="lista">
           @for (d of lista(); track d.clave) {
             <details class="tarjeta diag" [class.error]="d.severidad === 'error' && d.total" [class.aviso]="d.severidad === 'aviso' && d.total" [open]="d.total > 0 && d.severidad === 'error'">
@@ -61,6 +72,9 @@ import { Icono } from '../../shared/icono/icono';
                           @else {<a routerLink="/catalogos/conceptos">{{ m.nombre }}</a>}
                         </td>
                         <td class="apagado">{{ m.detalle }}</td>
+                        @if (d.clave === 'neto_negativo' && m.empleadoId) {
+                          <td class="der min"><button type="button" class="boton chico primario" (click)="corrigiendo.set({ id: m.empleadoId, nombre: m.nombre })">{{ puedeCapturar() ? 'Corregir' : 'Ver' }}</button></td>
+                        }
                       </tr>
                     }
                   </tbody>
@@ -72,6 +86,18 @@ import { Icono } from '../../shared/icono/icono';
         </div>
       }
     </div>
+
+    <app-cajon [abierto]="!!corrigiendo()" [ancho]="true" titulo="Corregir neto" [antetitulo]="corrigiendo()?.nombre ?? ''" (cerrar)="corrigiendo.set(null)">
+      @if (corrigiendo(); as c) {
+        @if (contexto.periodo(); as p) {
+          <app-ajuste-neto [periodoId]="p.id" [empleadoId]="c.id" [puede]="puedeCapturar()" (cambio)="pendientes.set(true)" />
+        }
+      }
+      <ng-container pie>
+        <button type="button" class="boton" (click)="corrigiendo.set(null)">Cerrar</button>
+        @if (pendientes()) {<button type="button" class="boton primario" [disabled]="calculando() || !puedeCalcular()" (click)="recalcular()">Volver a calcular la {{ nombreCalculo() }}</button>}
+      </ng-container>
+    </app-cajon>
   `,
   styles: `
     .lista {
@@ -88,6 +114,14 @@ import { Icono } from '../../shared/icono/icono';
     }
     .diag summary::-webkit-details-marker {
       display: none;
+    }
+    .recalcular {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
     }
     .marca {
       display: grid;
@@ -145,7 +179,11 @@ import { Icono } from '../../shared/icono/icono';
 export class Verificacion {
   /** Dentro del asistente de Proceso de nómina: sin encabezado de página. */
   readonly incrustado = input(false);
+  /** Terminó un recálculo pedido desde aquí (para que el asistente se actualice). */
+  readonly recalculado = output<void>();
   private readonly api = inject(ApiService);
+  private readonly avisos = inject(AvisosService);
+  private readonly auth = inject(AuthService);
   protected readonly contexto = inject(ContextoService);
   protected readonly lista = signal<Diagnostico[]>([]);
   protected readonly calculoId = signal<number | null>(null);
@@ -160,10 +198,71 @@ export class Verificacion {
     };
   });
 
+  protected readonly corrigiendo = signal<{ id: number; nombre: string } | null>(null);
+  protected readonly pendientes = signal(false);
+  protected readonly calculando = signal(false);
+  protected readonly puedeCapturar = computed(() => !!this.auth.currentUser()?.capacidades.capturar && this.contexto.abierto());
+  protected readonly puedeCalcular = computed(() => !!this.auth.currentUser()?.capacidades.calcular && this.contexto.abierto());
+  /** Si ya se calculó la definitiva, el ajuste se refleja volviendo a calcularla. */
+  protected readonly tipoCalculo = computed<'prenomina' | 'nomina'>(() => (this.contexto.periodo()?.estado === 'nomina' ? 'nomina' : 'prenomina'));
+  protected readonly nombreCalculo = computed(() => (this.tipoCalculo() === 'nomina' ? 'nómina' : 'prenómina'));
+  private temporizador: ReturnType<typeof setInterval> | null = null;
+
   constructor() {
+    let anterior: number | undefined;
     effect(() => {
-      if (this.contexto.periodo()) this.cargar();
+      const p = this.contexto.periodo();
+      if (p?.id !== anterior) {
+        anterior = p?.id;
+        this.pendientes.set(false);
+        this.corrigiendo.set(null);
+      }
+      if (p) this.cargar();
     });
+    inject(DestroyRef).onDestroy(() => this.detener());
+  }
+
+  protected recalcular(): void {
+    const p = this.contexto.periodo();
+    if (!p || this.calculando()) return;
+    this.calculando.set(true);
+    this.corrigiendo.set(null);
+    this.api.calcular(p.id, this.tipoCalculo()).subscribe({
+      next: (c) => this.esperar(c.id),
+      error: (e) => {
+        this.calculando.set(false);
+        this.avisos.error(mensajeDeError(e));
+      },
+    });
+  }
+
+  private esperar(calculoId: number): void {
+    this.detener();
+    this.temporizador = setInterval(() => {
+      this.api.calculo(calculoId).subscribe({
+        next: (c) => {
+          if (c.estado !== 'terminado' && c.estado !== 'error' && c.estado !== 'reemplazado') return;
+          if (!this.temporizador) return;
+          this.detener();
+          this.calculando.set(false);
+          if (c.estado === 'error') return this.avisos.error(`El cálculo falló: ${c.error}`);
+          this.pendientes.set(false);
+          this.avisos.exito(`Cálculo terminado: ${c.totalEmpleados} recibos.`);
+          this.cargar();
+          this.recalculado.emit();
+        },
+        error: (e) => {
+          this.detener();
+          this.calculando.set(false);
+          this.avisos.error(mensajeDeError(e));
+        },
+      });
+    }, 1500);
+  }
+
+  private detener(): void {
+    if (this.temporizador) clearInterval(this.temporizador);
+    this.temporizador = null;
   }
 
   protected cargar(): void {

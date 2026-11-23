@@ -31,6 +31,8 @@
       }
     </section>
 
+    <app-ajustes-quincena [periodoId]="contexto.periodo()!.id" [puede]="puede()" />
+
     @if (enCurso(); as c) {
       <section class="tarjeta con-relleno seccion progreso" aria-live="polite">
         <div class="cabeza-seccion">

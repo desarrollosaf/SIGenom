@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { Op, Sequelize, WhereOptions } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { contiene, patron } from '../common/busqueda';
+import { hoyMexico } from '../common/fechas';
 import { Adscripcion, Concepto, Motivo, Puesto, Tabulador } from '../database/models/catalogos.models';
 import { Recibo, Calculo, Periodo } from '../database/models/nomina.models';
 import {
@@ -115,7 +116,11 @@ export class EmpleadosService {
     if (!empleado) throw new NotFoundException('El empleado no existe');
 
     const [tab, movimientos, recibos] = await Promise.all([
-      this.tabulador.findOne({ where: { nivel: empleado.nivel, rango: empleado.rango } }),
+      // El renglón vigente hoy (el tabulador guarda las vigencias anteriores).
+      this.tabulador.findOne({
+        where: { nivel: empleado.nivel, rango: empleado.rango, vigencia: { [Op.lte]: hoyMexico() } },
+        order: [['vigencia', 'DESC']],
+      }),
       this.movimientos.findAll({
         where: { empleadoId: id },
         include: [Motivo],
@@ -133,10 +138,12 @@ export class EmpleadosService {
     return {
       ...this.resumen(empleado),
       datosPersonales: empleado.datosPersonales ?? null,
-      tabulador: tab ? { sueldoMensual: tab.sueldoMensual, compensacionMensual: tab.compensacionMensual } : null,
+      tabulador: tab
+        ? { vigencia: tab.vigencia, sueldoMensual: tab.sueldoMensual, compensacionMensual: tab.compensacionMensual, gratificacionMensual: tab.gratificacionMensual }
+        : null,
       sucursal: empleado.sucursal ? { sucursal: empleado.sucursal.sucursal, tipo: empleado.sucursal.tipo } : null,
       fijos: empleado.conceptosFijos
-        .map((f) => ({ id: f.id, importe: f.importe, concepto: concepto(f.concepto) }))
+        .map((f) => ({ id: f.id, importe: f.importe, gravaIsr: f.gravaIsr, timbra: f.timbra, concepto: concepto(f.concepto) }))
         .sort((a, b) => b.concepto.naturaleza.localeCompare(a.concepto.naturaleza) || a.concepto.clave - b.concepto.clave),
       descuentosPlazo: empleado.descuentosPlazo.map((d) => ({
         id: d.id,
@@ -262,23 +269,35 @@ export class EmpleadosService {
 
   // --- Percepciones y deducciones fijas ----------------------------------------------------------
 
-  async fijarConcepto(id: number, conceptoId: number, importe: number, usuario: string) {
+  /** Las marcas que no se manden se quedan como estaban; null = como la quincena o el catálogo. */
+  async fijarConcepto(
+    id: number,
+    conceptoId: number,
+    datos: { importe: number; gravaIsr?: boolean | null; timbra?: boolean | null },
+    usuario: string,
+  ) {
     const empleado = await this.buscar(id);
     const concepto = await this.conceptoDe(empleado, conceptoId);
     if (concepto.calculado) throw new BadRequestException(`${concepto.descripcion} lo calcula el sistema.`);
+    if (concepto.naturaleza === 'D' && datos.gravaIsr != null) throw new BadRequestException('Las deducciones no gravan ISR.');
+    const cambios = {
+      importe: datos.importe,
+      ...(datos.gravaIsr !== undefined ? { gravaIsr: datos.gravaIsr } : {}),
+      ...(datos.timbra !== undefined ? { timbra: datos.timbra } : {}),
+    };
     const [fijo, creado] = await this.fijos.findOrCreate({
       where: { empleadoId: id, conceptoId },
-      defaults: { empleadoId: id, conceptoId, importe },
+      defaults: { empleadoId: id, conceptoId, ...cambios },
     });
-    const anterior = creado ? null : fijo.importe;
-    if (!creado) await fijo.update({ importe });
+    const anterior = creado ? null : { importe: fijo.importe, gravaIsr: fijo.gravaIsr, timbra: fijo.timbra };
+    if (!creado) await fijo.update(cambios);
     await this.bitacora.registrar({
       usuario,
       entidad: 'empleado',
       entidadId: id,
       accion: 'concepto_fijo',
-      antes: anterior === null ? null : { clave: concepto.clave, importe: anterior },
-      despues: { clave: concepto.clave, importe },
+      antes: anterior === null ? null : { clave: concepto.clave, ...anterior },
+      despues: { clave: concepto.clave, ...cambios },
     });
   }
 

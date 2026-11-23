@@ -130,6 +130,7 @@ export class CalculosService {
         naturaleza: c.naturaleza,
         importe: c.importe,
         gravadoIsr: c.gravadoIsr,
+        timbra: c.timbra,
       })),
     };
   }

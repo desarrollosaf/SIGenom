@@ -71,7 +71,7 @@ async function main() {
       const sumaN = ambos.reduce((s, id) => s + nuevo.get(id), 0);
 
       console.log(`\n=== Nómina ${p.tipo_nomina} ${p.anio} Q${String(p.quincena).padStart(2, '0')}  (anterior: cálculo ${p.legado}, SIGenom: cálculo ${p.nuevo})`);
-      console.log(`Recibos en ambos: ${ambos.length}   neto idéntico: ${iguales} (${ambos.length ? ((iguales * 100) / ambos.length).toFixed(1) : 0} %)   solo en el anterior: ${soloViejo}   solo en SIGenom (con importe): ${soloNuevo}`);
+      console.log(`Recibos en ambos: ${ambos.length}   neto idéntico: ${iguales} (${ambos.length ? ((iguales * 100) / ambos.length).toFixed(2) : 0} %)   solo en el anterior: ${soloViejo}   solo en SIGenom (con importe): ${soloNuevo}`);
       console.log(`Neto anterior ${dinero(sumaV)}   SIGenom ${dinero(sumaN)}   diferencia ${dinero(sumaN - sumaV)}`);
 
       const resumen = new Map();
