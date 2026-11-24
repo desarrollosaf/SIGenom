@@ -4,6 +4,7 @@ import { ApiService, mensajeDeError } from '../../core/services/api.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
 import type { AjusteQuincena } from '../../core/services/modelos';
+import { BuscarClave } from '../../shared/buscar-clave/buscar-clave';
 
 /**
  * Claves que solo en esta quincena gravan o se timbran distinto de lo que dice el catálogo: p. ej.
@@ -12,7 +13,7 @@ import type { AjusteQuincena } from '../../core/services/modelos';
  */
 @Component({
   selector: 'app-ajustes-quincena',
-  imports: [FormsModule],
+  imports: [FormsModule, BuscarClave],
   template: `
     <section class="tarjeta con-relleno seccion">
       <div class="cabeza-seccion">
@@ -60,12 +61,7 @@ import type { AjusteQuincena } from '../../core/services/modelos';
 
       @if (puede()) {
         <div class="barra-filtros" style="margin-top: 14px; align-items: flex-end">
-          <select class="campo" aria-label="Clave" [ngModel]="nuevaId()" (ngModelChange)="elegir($event)">
-            <option [ngValue]="null">Agregar una clave…</option>
-            @for (c of disponibles(); track c.id) {
-              <option [ngValue]="c.id">{{ c.naturaleza }} {{ clave(c.clave) }} · {{ c.nombre }}</option>
-            }
-          </select>
+          <app-buscar-clave style="flex: 1 1 280px; max-width: 420px" idCampo="ajuste-clave-quincena" marcador="Agregar una clave: número o nombre" [conceptos]="disponibles()" [valor]="nuevaId()" (valorChange)="elegir($event)" />
           @if (nueva(); as n) {
             @if (n.naturaleza === 'P') {
               <label class="casilla"><input type="checkbox" [(ngModel)]="nuevaGrava" />Grava ISR</label>

@@ -13,6 +13,7 @@ import type {
   EmpleadoResumen,
   FichaEmpleado,
   ImpactoMovimiento,
+  MovimientoExterno,
   MovimientoLista,
   DatosAnalisis,
   QuincenaEmpleado,
@@ -26,6 +27,7 @@ import type {
   ResultadoSimulacion,
   ResultadoTablaRang,
   ResumenDispersion,
+  SistemaExterno,
   TablaReporte,
   Tablero,
   TipoCalculo,
@@ -200,16 +202,6 @@ export class ApiService {
     return this.http.post<{ id: number }>(`${this.url}/periodos/${periodoId}/capturas`, datos);
   }
 
-  importarCapturas(periodoId: number, archivo: File, origen: string) {
-    const datos = new FormData();
-    datos.append('archivo', archivo);
-    datos.append('origen', origen);
-    return this.http.post<{ importadas: number; errores: { renglon: number; texto: string; error: string }[] }>(
-      `${this.url}/periodos/${periodoId}/capturas/importar`,
-      datos,
-    );
-  }
-
   probarCaptura(
     periodoId: number,
     datos: { empleadoId: number; conceptoId: number; importe: number; gravaIsr?: boolean | null; timbra?: boolean | null; fija?: boolean },
@@ -337,6 +329,30 @@ export class ApiService {
 
   editarUsuario(id: number, datos: Partial<{ nombre: string; rol: string; activo: boolean; password: string }>) {
     return this.http.patch<UsuarioSistema>(`${this.url}/usuarios/${id}`, datos);
+  }
+
+  sistemasExternos(): Observable<SistemaExterno[]> {
+    return this.http.get<SistemaExterno[]>(`${this.url}/otros-sistemas`);
+  }
+
+  movimientosExternos(sistema: string, filtro: { estado?: string; tipo?: string; q?: string; desde?: number }) {
+    return this.http.get<{ total: number; porTipo: Record<string, number>; movimientos: MovimientoExterno[] }>(`${this.url}/otros-sistemas/${sistema}`, { params: sinVacios(filtro) });
+  }
+
+  traerExternos(sistema: string) {
+    return this.http.post<{ nuevos: number }>(`${this.url}/otros-sistemas/${sistema}/traer`, {});
+  }
+
+  aplicarExternos(sistema: string, ids: number[]) {
+    return this.http.post<{ aplicados: number; errores: { id: number; nombre: string; error: string }[] }>(`${this.url}/otros-sistemas/${sistema}/aplicar`, { ids });
+  }
+
+  descartarExternos(sistema: string, ids: number[], motivo: string) {
+    return this.http.post<{ descartados: number }>(`${this.url}/otros-sistemas/${sistema}/descartar`, { ids, motivo });
+  }
+
+  restaurarExterno(sistema: string, id: number): Observable<void> {
+    return this.http.post<void>(`${this.url}/otros-sistemas/${sistema}/${id}/restaurar`, {});
   }
 
   bitacora(filtro: { entidad?: string; usuario?: string; q?: string; dia?: string; desde?: number }): Observable<RegistroBitacora[]> {

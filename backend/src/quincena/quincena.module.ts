@@ -14,6 +14,6 @@ import { RetroactivoService } from './retroactivo.service';
   imports: [BullModule.registerQueue({ name: COLA_CALCULOS })],
   controllers: [QuincenaController],
   providers: [PeriodosService, CapturasService, CalculosService, ReciboPdfService, AjusteNetoService, RetroactivoService],
-  exports: [PeriodosService, CalculosService],
+  exports: [PeriodosService, CalculosService, CapturasService],
 })
 export class QuincenaModule {}

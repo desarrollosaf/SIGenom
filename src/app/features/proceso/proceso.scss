@@ -359,3 +359,53 @@
     top: 21px;
   }
 }
+
+.otros {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 14px 18px;
+  color: var(--tinta);
+  text-decoration: none;
+
+  &:hover {
+    border-color: var(--acento);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--acento);
+    outline-offset: 2px;
+  }
+}
+
+.otros-icono {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+
+.otros-texto {
+  flex: 1;
+  min-width: 0;
+
+  strong,
+  small {
+    display: block;
+  }
+
+  strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  small {
+    color: var(--apagado);
+    font-size: 0.8125rem;
+  }
+}

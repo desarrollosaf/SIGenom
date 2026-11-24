@@ -1,9 +1,3 @@
-.arriba {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 12px;
-}
-
 .formulario.uno {
   grid-template-columns: 1fr;
 }
@@ -50,19 +44,9 @@
   }
 }
 
-.archivo {
-  padding: 6px 8px;
-}
-
 .resumen {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
   color: var(--apagado);
-}
-
-@media (max-width: 900px) {
-  .arriba {
-    grid-template-columns: 1fr;
-  }
 }

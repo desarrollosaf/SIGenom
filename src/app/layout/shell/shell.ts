@@ -39,6 +39,7 @@ const MENU: Grupo[] = [
     // Captura, cálculo, verificación y pago viven dentro del asistente; sus rutas siguen existiendo.
     entradas: [
       { ruta: '/proceso', etiqueta: 'Proceso de nómina', icono: 'calculo' },
+      { ruta: '/otros-sistemas', etiqueta: 'Otros sistemas', icono: 'descarga' },
       { ruta: '/quincenas', etiqueta: 'Historial de quincenas', icono: 'calendario' },
     ],
   },

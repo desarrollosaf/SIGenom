@@ -451,6 +451,44 @@ export interface UsuarioSistema {
   ultimoAcceso: string | null;
 }
 
+export type EstadoExterno = 'pendiente' | 'aplicando' | 'aplicado' | 'descartado';
+
+/** Un sistema del que se traen movimientos. */
+export interface SistemaExterno {
+  clave: 'personal' | 'checador' | 'prestamos';
+  nombre: string;
+  descripcion: string;
+  tipos: Record<string, string>;
+  conectado: boolean;
+  pendientes: number;
+  aplicados: number;
+  descartados: number;
+  ultima: { fecha: string; usuario: string; nuevos: number; error: string | null } | null;
+}
+
+export interface MovimientoExterno {
+  id: number;
+  tipo: string;
+  tipoNombre: string;
+  subtipo: string | null;
+  nombre: string;
+  curp: string | null;
+  tipoNomina: string | null;
+  anio: number | null;
+  quincena: number | null;
+  fecha: string | null;
+  lote: string | null;
+  estado: EstadoExterno;
+  mensaje: string | null;
+  empleadoId: number | null;
+  efecto: string[];
+  avisos: string[];
+  problema: string | null;
+  atendidoPor: string | null;
+  atendidoEl: string | null;
+  traidoEl: string;
+}
+
 export interface RegistroBitacora {
   id: number;
   usuario: string;

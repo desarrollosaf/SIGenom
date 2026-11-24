@@ -25,6 +25,7 @@ import { FORMATO } from '../../shared/formato';
           <option value="periodo">Quincenas y cálculos</option>
           <option value="catalogo">Catálogos</option>
           <option value="tabulador">Tabulador</option>
+          <option value="externo">Otros sistemas</option>
           <option value="calculo">Dispersión bancaria</option>
           <option value="usuario">Usuarios</option>
         </select>

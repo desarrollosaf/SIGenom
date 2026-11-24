@@ -25,7 +25,6 @@
       <p class="nota ambar" style="margin-bottom: 16px">Esta quincena ya está cerrada: solo se puede consultar.</p>
     }
 
-    <div class="arriba">
       <!-- Captura manual -->
       <section class="tarjeta con-relleno">
         <h2 class="titulo-chico">Capturar</h2>
@@ -48,19 +47,7 @@
             <form class="linea" (ngSubmit)="agregar()">
               <div class="crece">
                 <label class="etiqueta" for="concepto">Clave</label>
-                <select id="concepto" name="concepto" class="campo" [(ngModel)]="nueva.conceptoId" [disabled]="!empleado()">
-                  <option [ngValue]="null" disabled>Elige la clave…</option>
-                  <optgroup label="Percepciones">
-                    @for (c of capturables(); track c.id) {
-                      @if (c.naturaleza === 'P') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}
-                    }
-                  </optgroup>
-                  <optgroup label="Deducciones">
-                    @for (c of capturables(); track c.id) {
-                      @if (c.naturaleza === 'D') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}
-                    }
-                  </optgroup>
-                </select>
+                <app-buscar-clave idCampo="concepto" [marcador]="empleado() ? 'Busca por clave o nombre' : 'Primero elige al empleado'" [conceptos]="capturables()" [deshabilitado]="!empleado()" [(valor)]="nueva.conceptoId" />
               </div>
               <div>
                 <label class="etiqueta" for="importe">Importe</label>
@@ -95,35 +82,6 @@
           <p class="apagado chico" style="margin-top: 8px">Tu usuario solo puede consultar.</p>
         }
       </section>
-
-      <!-- Importación -->
-      <section class="tarjeta con-relleno">
-        <h2 class="titulo-chico">Importar archivo</h2>
-        <p class="apagado chico">CSV con <span class="mono">curp, clave, importe, referencia</span>. Sustituye a los traspasos de inasistencias, reintegros, caja de ahorro y comedor.</p>
-        @if (puede()) {
-          <div class="formulario uno" style="margin-top: 12px">
-            <select class="campo" [(ngModel)]="origenArchivo" aria-label="Origen">
-              @for (o of origenesArchivo(); track o.clave) {
-                @if (o.clave !== 'captura') {<option [value]="o.clave">{{ o.nombre }}</option>}
-              }
-            </select>
-            <div class="linea">
-              <input class="campo archivo crece" type="file" accept=".csv,.txt" (change)="elegirArchivo($event)" aria-label="Archivo CSV" />
-              <button type="button" class="boton" [disabled]="!archivo || guardando()" (click)="importar()"><app-icono nombre="subir" [tamano]="15" />Importar</button>
-            </div>
-          </div>
-        }
-        @if (resultado(); as r) {
-          <div class="nota" [class.verde]="!r.errores.length" [class.ambar]="r.errores.length" style="margin-top: 12px; flex-direction: column">
-            <strong>{{ r.importadas }} importados · {{ r.errores.length }} con error</strong>
-            @for (e of r.errores.slice(0, 8); track e.renglon) {
-              <span class="chico">Renglón {{ e.renglon }}: {{ e.error }} <span class="mono tenue">{{ e.texto }}</span></span>
-            }
-            @if (r.errores.length > 8) {<span class="chico tenue">y {{ r.errores.length - 8 }} más…</span>}
-          </div>
-        }
-      </section>
-    </div>
 
     <!-- Lo capturado -->
     <section class="seccion">

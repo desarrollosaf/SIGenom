@@ -56,6 +56,11 @@ export const routes: Routes = [
         title: t('Quincenas'),
         loadComponent: () => import('./features/quincenas/quincenas').then((m) => m.Quincenas),
       },
+      {
+        path: 'otros-sistemas',
+        title: t('Otros sistemas'),
+        loadComponent: () => import('./features/otros-sistemas/otros-sistemas').then((m) => m.OtrosSistemas),
+      },
       { path: 'reportes', title: t('Reportes'), loadComponent: () => import('./features/reportes/reportes').then((m) => m.Reportes) },
       {
         path: 'analisis',

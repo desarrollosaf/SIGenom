@@ -7,6 +7,6 @@ import { QuincenaEmpleadoService } from './quincena-empleado.service';
 @Module({
   controllers: [EmpleadosController, MovimientosController],
   providers: [EmpleadosService, MovimientosService, QuincenaEmpleadoService],
-  exports: [EmpleadosService],
+  exports: [EmpleadosService, MovimientosService],
 })
 export class EmpleadosModule {}

@@ -1,0 +1,395 @@
+.sistemas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.sistema {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 14px;
+  padding: 18px;
+  border: 1px solid var(--linea);
+  border-radius: 14px;
+  background: var(--superficie);
+  color: var(--tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    border-color: var(--linea-fuerte);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--acento);
+    outline-offset: 2px;
+  }
+
+  &.activo {
+    border-color: var(--acento);
+    box-shadow: 0 0 0 3px var(--acento-suave);
+  }
+
+  .texto strong,
+  .texto small {
+    display: block;
+  }
+
+  .texto strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .texto small {
+    margin-top: 2px;
+    color: var(--apagado);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+}
+
+.sistema-vacio {
+  height: 112px;
+  margin: 0;
+  border-radius: 14px;
+}
+
+.figura {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--fondo-2);
+  color: var(--apagado);
+
+  .activo & {
+    background: var(--acento-suave);
+    color: var(--acento);
+  }
+
+  &.grande {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 8px;
+    border-radius: 50%;
+    background: var(--acento-suave);
+    color: var(--acento);
+  }
+}
+
+.cuenta {
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--acento);
+  color: var(--sobre-acento);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.conexion {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--tenue);
+  font-size: 0.75rem;
+
+  &::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--linea-fuerte);
+  }
+
+  &.si::before {
+    background: var(--acento);
+  }
+}
+
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--linea);
+
+  .pestanas {
+    margin: 0;
+    border: 0;
+  }
+
+  .boton {
+    margin-bottom: 8px;
+  }
+}
+
+.aviso-conexion,
+.aviso-mov {
+  margin-bottom: 14px;
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 14px;
+
+  .buscar {
+    flex: 1 1 240px;
+    max-width: 360px;
+  }
+}
+
+.pildoras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  button {
+    padding: 6px 12px;
+    border: 1px solid var(--linea);
+    border-radius: 999px;
+    background: var(--superficie);
+    color: var(--apagado);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--tinta);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--acento);
+      outline-offset: 2px;
+    }
+
+    &.activa {
+      border-color: var(--acento);
+      background: var(--acento-suave);
+      color: var(--acento);
+    }
+  }
+}
+
+.movimientos {
+  padding: 0;
+  overflow: hidden;
+  transition: opacity 0.15s ease;
+}
+
+.tenue-carga {
+  opacity: 0.6;
+}
+
+.marcar-todos {
+  display: flex;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--linea);
+  color: var(--apagado);
+  font-size: 0.8125rem;
+}
+
+.movimiento {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--linea);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: var(--superficie-2);
+  }
+
+  &.marcado {
+    background: var(--acento-suave);
+  }
+
+  > input {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--acento);
+  }
+}
+
+.cuerpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+  min-width: 0;
+  padding: 14px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--acento);
+    outline-offset: -2px;
+    border-radius: 6px;
+  }
+}
+
+.tipo {
+  justify-self: start;
+}
+
+.quien {
+  min-width: 0;
+
+  strong,
+  small {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  small {
+    margin-top: 2px;
+    color: var(--apagado);
+    font-size: 0.8125rem;
+  }
+
+  .problema {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--ambar);
+  }
+}
+
+.detenido .tipo {
+  opacity: 0.6;
+}
+
+.cuando {
+  text-align: right;
+  white-space: nowrap;
+
+  span {
+    font-size: 0.8125rem;
+  }
+
+  small {
+    display: block;
+    color: var(--tenue);
+    font-size: 0.75rem;
+  }
+}
+
+.nada {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 64px 16px;
+  text-align: center;
+}
+
+.cambios {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 18px;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 10px 14px;
+    border-radius: var(--radio);
+    background: var(--fondo-2);
+    font-size: 0.875rem;
+  }
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 18px 0;
+
+  div {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
+    font-size: 0.875rem;
+  }
+
+  dt {
+    color: var(--apagado);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.seleccion {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 10px 12px 10px 18px;
+  border: 1px solid var(--linea);
+  border-radius: 14px;
+  background: var(--superficie);
+  box-shadow: var(--sombra);
+  font-size: 0.875rem;
+}
+
+.aire {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .sistemas {
+    grid-template-columns: 1fr;
+  }
+
+  .cuerpo {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    .quien {
+      grid-column: 1 / -1;
+      order: 3;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sistema,
+  .movimientos {
+    transition: none;
+  }
+}

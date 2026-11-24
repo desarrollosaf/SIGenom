@@ -24,6 +24,8 @@ export type Origen = keyof typeof ORIGENES;
 export const ORIGENES_SISTEMA = {
   ajuste_neto: 'Ajuste de neto (Verificación)',
   retroactivo: 'Retroactivo de aumento',
+  checador: 'Checadores',
+  prestamos: 'Préstamos',
   legado: 'Sistema anterior (TXT)',
 } as const;
 
@@ -141,6 +143,7 @@ export class CapturasService {
     periodoId: number,
     datos: { empleadoId: number; conceptoId: number; importe: number; referencia?: string; gravaIsr?: boolean | null; timbra?: boolean | null },
     usuario: string,
+    origen = 'captura',
   ) {
     const periodo = await this.periodos.abierto(periodoId);
     const empleado = await this.empleados.findByPk(datos.empleadoId);
@@ -157,10 +160,10 @@ export class CapturasService {
       periodoId,
       ...datos,
       referencia: datos.referencia ?? null,
-      origen: 'captura',
+      origen,
       registradoPor: usuario,
     });
-    await this.bitacora.registrar({ usuario, entidad: 'captura', entidadId: captura.id, accion: 'alta', despues: { periodoId, ...datos } });
+    await this.bitacora.registrar({ usuario, entidad: 'captura', entidadId: captura.id, accion: 'alta', despues: { periodoId, ...datos, ...(origen === 'captura' ? {} : { origen }) } });
     return { id: captura.id };
   }
 

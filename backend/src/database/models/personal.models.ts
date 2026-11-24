@@ -205,6 +205,10 @@ export class DescuentoPlazo extends Model {
   @Column(DataType.STRING(120))
   declare beneficiario: string | null;
 
+  /** Número del préstamo en el sistema de préstamos, si vino de ahí. */
+  @Column(DataType.STRING(40))
+  declare referenciaExterna: string | null;
+
   @Column(DataType.BOOLEAN)
   declare activo: boolean;
 }

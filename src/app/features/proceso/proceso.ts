@@ -54,6 +54,8 @@ export class Proceso {
   private readonly totalesCaptura = signal({ total: 0, personas: 0, p: 0, d: 0, posteriores: [0, 0] });
   protected readonly diagnosticos = signal<Diagnostico[] | null>(null);
   protected readonly observados = signal<ReciboFila[]>([]);
+  /** Movimientos de otros sistemas que nadie ha aplicado. */
+  protected readonly externos = signal(0);
   protected readonly activo = signal<ClavePaso>('captura');
   protected readonly enviando = signal(false);
   /** Pasos que no dejan huella en la base y que la persona dio por buenos con "Continuar". */
@@ -122,6 +124,7 @@ export class Proceso {
         else this.detalle.set(null);
       });
     });
+    this.api.sistemasExternos().subscribe({ next: (l) => this.externos.set(l.reduce((s, x) => s + x.pendientes, 0)), error: () => undefined });
     const temporizador = setInterval(() => this.vigilar(), 1500);
     inject(DestroyRef).onDestroy(() => clearInterval(temporizador));
   }

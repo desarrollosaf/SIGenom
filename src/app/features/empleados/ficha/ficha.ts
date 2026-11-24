@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { AvisosService } from '../../../core/services/avisos.service';
 import { ContextoService } from '../../../core/services/contexto.service';
 import { NOMBRE_CALCULO, type FichaEmpleado, type OrigenClave, type QuincenaEmpleado } from '../../../core/services/modelos';
+import { BuscarClave } from '../../../shared/buscar-clave/buscar-clave';
 import { Cajon } from '../../../shared/cajon/cajon';
 import { FORMATO } from '../../../shared/formato';
 import { Icono } from '../../../shared/icono/icono';
@@ -26,7 +27,7 @@ const NOMBRE_MOVIMIENTO: Record<string, string> = {
 
 @Component({
   selector: 'app-ficha-empleado',
-  imports: [FormsModule, RouterLink, Icono, Cajon, MarcasClave, Recibo, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, BuscarClave, Cajon, MarcasClave, Recibo, ...FORMATO],
   templateUrl: './ficha.html',
   styleUrl: './ficha.scss',
 })

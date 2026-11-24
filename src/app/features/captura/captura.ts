@@ -6,6 +6,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
 import type { Captura, ConceptoOpcion, EmpleadoResumen } from '../../core/services/modelos';
+import { BuscarClave } from '../../shared/buscar-clave/buscar-clave';
 import { BuscarEmpleado } from '../../shared/buscar-empleado/buscar-empleado';
 import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO } from '../../shared/formato';
@@ -13,12 +14,12 @@ import { MarcasClave } from '../../shared/marcas-clave/marcas-clave';
 import { Icono } from '../../shared/icono/icono';
 
 /**
- * Captura quincenal (1CAP-Q-N.W) y traspasos (1TRA-I-P, 1TRA-REI, 1TRA-D-C): todo lo que solo
- * aplica en esta quincena, a mano o desde un archivo.
+ * Captura quincenal (1CAP-Q-N.W): todo lo que solo aplica en esta quincena, a mano. Lo que viene de
+ * otros sistemas (personal, checadores, préstamos) entra por Otros sistemas.
  */
 @Component({
   selector: 'app-captura',
-  imports: [FormsModule, RouterLink, Icono, BuscarEmpleado, Cajon, MarcasClave, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, BuscarClave, BuscarEmpleado, Cajon, MarcasClave, ...FORMATO],
   templateUrl: './captura.html',
   styleUrl: './captura.scss',
 })
@@ -40,11 +41,8 @@ export class CapturaPagina {
   protected readonly guardando = signal(false);
   /** Captura a la que se le cambian las marcas. */
   protected readonly marcando = signal<{ captura: Captura; gravaIsr: boolean | null; timbra: boolean | null } | null>(null);
-  protected readonly resultado = signal<{ importadas: number; errores: { renglon: number; texto: string; error: string }[] } | null>(null);
 
   protected nueva = this.vacia();
-  protected origenArchivo = 'inasistencias';
-  protected archivo: File | null = null;
 
   protected readonly capturables = computed(() => this.contexto.conceptos().filter((c) => !c.calculado));
   /** Una quincena puede traer más de 10 mil movimientos: el filtro y los totales los resuelve el servidor. */
@@ -53,8 +51,6 @@ export class CapturaPagina {
   /** Lo capturado a la persona elegida, para ver de un vistazo qué ya tiene. */
   protected readonly delEmpleado = signal<Captura[]>([]);
   private espera: ReturnType<typeof setTimeout> | null = null;
-  /** Los que se eligen al importar un archivo; los demás los pone el sistema. */
-  protected readonly origenesArchivo = computed(() => this.origenes().filter((o) => !o.sistema));
   protected readonly nombreOrigen = computed(() => new Map(this.origenes().map((o) => [o.clave, o.nombre.split(' (')[0]])));
 
   constructor() {
@@ -80,8 +76,9 @@ export class CapturaPagina {
   }
 
   private cargar(periodoId: number, filtro = { q: this.filtro().trim(), origen: this.filtroOrigen() }): void {
-    this.api.capturas(periodoId, filtro).subscribe((c) => this.capturas.set(c));
-    this.api.resumenCapturas(periodoId, filtro).subscribe((r) => this.totales.set(r));
+    const fallo = (x: unknown) => this.avisos.error(mensajeDeError(x));
+    this.api.capturas(periodoId, filtro).subscribe({ next: (c) => this.capturas.set(c), error: fallo });
+    this.api.resumenCapturas(periodoId, filtro).subscribe({ next: (r) => this.totales.set(r), error: fallo });
     const e = this.empleado();
     if (e) this.api.capturas(periodoId, { empleadoId: e.id }).subscribe((c) => this.delEmpleado.set(c));
   }
@@ -150,29 +147,6 @@ export class CapturaPagina {
     this.api.borrarCaptura(c.id).subscribe({
       next: () => this.cargar(this.contexto.periodo()!.id),
       error: (e) => this.avisos.error(mensajeDeError(e)),
-    });
-  }
-
-  protected elegirArchivo(evento: Event): void {
-    this.archivo = (evento.target as HTMLInputElement).files?.[0] ?? null;
-    this.resultado.set(null);
-  }
-
-  protected importar(): void {
-    const p = this.contexto.periodo();
-    if (!p || !this.archivo) return;
-    this.guardando.set(true);
-    this.api.importarCapturas(p.id, this.archivo, this.origenArchivo).subscribe({
-      next: (r) => {
-        this.guardando.set(false);
-        this.resultado.set(r);
-        if (r.importadas) this.avisos.exito(`${r.importadas} movimientos importados.`);
-        this.cargar(p.id);
-      },
-      error: (e) => {
-        this.guardando.set(false);
-        this.avisos.error(mensajeDeError(e));
-      },
     });
   }
 }

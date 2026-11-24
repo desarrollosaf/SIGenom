@@ -132,15 +132,7 @@
             <p class="apagado chico" style="margin-bottom: 12px">Solo se paga o descuenta en la {{ quincena()!.periodo.nombre }}.</p>
             <div class="formulario uno">
               <div class="barra-filtros" style="margin: 0; align-items: flex-end">
-                <select class="campo crece" [(ngModel)]="nuevaCaptura.conceptoId" aria-label="Clave a capturar">
-                  <option [ngValue]="null">Elige la clave…</option>
-                      <optgroup label="Percepciones">
-                        @for (c of conceptos(); track c.id) {@if (c.naturaleza === 'P') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}}
-                      </optgroup>
-                      <optgroup label="Deducciones">
-                        @for (c of conceptos(); track c.id) {@if (c.naturaleza === 'D') {<option [ngValue]="c.id">{{ c.clave.toString().padStart(3, '0') }} · {{ c.nombre }}</option>}}
-                      </optgroup>
-                </select>
+                <app-buscar-clave class="crece" idCampo="ficha-captura" [conceptos]="conceptos()" [(valor)]="nuevaCaptura.conceptoId" />
                 <input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevaCaptura.importe" aria-label="Importe a capturar" />
                 <button type="button" class="boton primario" [disabled]="!nuevaCaptura.conceptoId || !nuevaCaptura.importe || guardando()" (click)="capturar()">Capturar</button>
               </div>
@@ -189,31 +181,18 @@
                 <tr><td colspan="6" class="tenue">Sin percepciones ni deducciones fijas.</td></tr>
               }
             </tbody>
-            @if (puede()) {
-              <tfoot>
-                <tr>
-                  <td colspan="4">
-                    <select class="campo" [(ngModel)]="nuevoFijo.conceptoId" aria-label="Concepto a asignar">
-                      <option [ngValue]="null">Asignar otro concepto…</option>
-                      @for (c of conceptos(); track c.id) {
-                        <option [ngValue]="c.id">{{ c.clave }} · {{ c.nombre }} ({{ c.naturaleza === 'P' ? 'percepción' : 'deducción' }})</option>
-                      }
-                    </select>
-                  </td>
-                  <td class="der"><input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevoFijo.importe" aria-label="Importe" /></td>
-                  <td><button type="button" class="boton chico primario" [disabled]="!nuevoFijo.conceptoId || !nuevoFijo.importe || guardando()" (click)="agregarFijo()">Agregar</button></td>
-                </tr>
-                @if (nuevoFijo.conceptoId) {
-                  <tr><td colspan="6">
-              @if (clave(nuevoFijo.conceptoId); as c) {
-                <app-marcas-clave [concepto]="c" [periodoId]="quincena()?.periodo?.id ?? null" [empleadoId]="f.id" [importe]="nuevoFijo.importe" [fija]="true" [(gravaIsr)]="nuevoFijo.gravaIsr" [(timbra)]="nuevoFijo.timbra" />
-              }
-                  </td></tr>
-                }
-              </tfoot>
-            }
           </table>
         </div>
+        @if (puede()) {
+          <div class="barra-filtros" style="margin: 10px 0 0">
+            <app-buscar-clave style="flex: 1 1 260px" idCampo="ficha-fija" marcador="Asignar otra clave…" [conceptos]="conceptos()" [(valor)]="nuevoFijo.conceptoId" />
+            <input class="campo cifra importe" type="number" step="0.01" placeholder="0.00" [(ngModel)]="nuevoFijo.importe" aria-label="Importe quincenal" />
+            <button type="button" class="boton primario" [disabled]="!nuevoFijo.conceptoId || !nuevoFijo.importe || guardando()" (click)="agregarFijo()">Agregar</button>
+          </div>
+          @if (clave(nuevoFijo.conceptoId); as c) {
+            <app-marcas-clave [concepto]="c" [periodoId]="quincena()?.periodo?.id ?? null" [empleadoId]="f.id" [importe]="nuevoFijo.importe" [fija]="true" [(gravaIsr)]="nuevoFijo.gravaIsr" [(timbra)]="nuevoFijo.timbra" />
+          }
+        }
       }
 
       @case ('descuentos') {

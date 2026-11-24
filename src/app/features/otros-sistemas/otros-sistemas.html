@@ -1,0 +1,171 @@
+<div class="pagina">
+  <header class="encabezado">
+    <div>
+      <p class="antetitulo">Quincena</p>
+      <h1 class="titulo">Otros sistemas</h1>
+      <p class="apagado">Trae los movimientos, revisa qué van a cambiar y aplícalos.</p>
+    </div>
+  </header>
+
+  <nav class="sistemas" aria-label="Sistemas">
+    @for (s of sistemas(); track s.clave) {
+      <button type="button" class="sistema" [class.activo]="s.clave === elegido()" [attr.aria-pressed]="s.clave === elegido()" (click)="elegir(s.clave)">
+        <span class="figura"><app-icono [nombre]="icono[s.clave]" [tamano]="20" /></span>
+        <span class="texto">
+          <strong>{{ s.nombre }}</strong>
+          <small>{{ s.descripcion }}</small>
+        </span>
+        @if (s.pendientes) {<span class="cuenta" [attr.aria-label]="s.pendientes + ' por aplicar'">{{ s.pendientes | numero }}</span>}
+        <span class="conexion" [class.si]="s.conectado">
+          @if (!s.conectado) {Sin conectar}
+          @else if (s.ultima?.error) {<span class="negativo">No se pudo leer</span>}
+          @else if (s.ultima) {Leído {{ s.ultima.fecha | fecha: true }}}
+          @else {Sin leer todavía}
+        </span>
+      </button>
+    } @empty {
+      @for (i of [1, 2, 3]; track i) {<div class="esqueleto sistema-vacio"></div>}
+    }
+  </nav>
+
+  @if (sistema(); as s) {
+    <div class="barra">
+      <div class="pestanas" role="tablist">
+        @for (e of estados; track e.valor) {
+          <button type="button" role="tab" [class.activa]="estado() === e.valor" [attr.aria-selected]="estado() === e.valor" (click)="ir({ estado: e.valor })">
+            {{ e.etiqueta }}
+            <span class="tenue mono chico">{{ (e.valor === 'pendiente' ? s.pendientes : e.valor === 'aplicado' ? s.aplicados : s.descartados) | numero }}</span>
+          </button>
+        }
+      </div>
+      @if (puede) {
+        <button type="button" class="boton primario" [disabled]="!s.conectado || trayendo()" (click)="traer()">
+          <app-icono nombre="descarga" [tamano]="16" />{{ trayendo() ? 'Trayendo…' : 'Traer movimientos' }}
+        </button>
+      }
+    </div>
+
+    @if (!s.conectado) {
+      <p class="nota ambar aviso-conexion"><app-icono nombre="info" [tamano]="18" /><span>Falta conectar <strong>{{ s.nombre }}</strong>. Quien administra el servidor captura su conexión; los pasos están en <span class="mono">docs/integraciones.md</span>.</span></p>
+    }
+
+    @if (total() || q() || tipo()) {
+      <div class="filtros">
+        <input id="otros-buscar" class="campo buscar" type="search" placeholder="Nombre, CURP o RFC" [ngModel]="q()" (ngModelChange)="q.set($event); desde.set(0)" />
+        @if (tipos().length > 1 || tipo()) {
+          <div class="pildoras">
+            <button type="button" [class.activa]="!tipo()" (click)="ir({ tipo: '' })">Todos</button>
+            @for (t of tipos(); track t.valor) {
+              <button type="button" [class.activa]="tipo() === t.valor" (click)="ir({ tipo: t.valor })">{{ t.etiqueta }} <span class="mono">{{ t.total | numero }}</span></button>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    @if (lista().length) {
+      <section class="tarjeta movimientos" [class.tenue-carga]="cargando()">
+        @if (estado() === 'pendiente' && puede && aplicables().length) {
+          <label class="marcar-todos casilla"><input id="otros-todos" type="checkbox" [checked]="todos()" (change)="alternarTodos()" />Elegir los {{ aplicables().length }} que se pueden aplicar</label>
+        }
+        @for (m of lista(); track m.id) {
+          <article class="movimiento" [class.marcado]="marcados().has(m.id)" [class.detenido]="m.problema">
+            @if (estado() === 'pendiente' && puede) {
+              <input type="checkbox" [id]="'mov-' + m.id" [checked]="marcados().has(m.id)" [disabled]="!!m.problema || m.estado !== 'pendiente'" [attr.aria-label]="'Elegir a ' + m.nombre" (change)="alternar(m)" />
+            }
+            <button type="button" class="cuerpo" (click)="abierto.set(m)">
+              <span class="insignia sin-punto tipo" [class]="tono(m)">{{ m.tipoNombre }}</span>
+              <span class="quien">
+                <strong>{{ m.nombre }}</strong>
+                @if (m.problema) {<small class="problema"><app-icono nombre="alerta" [tamano]="13" />{{ m.problema }}</small>}
+                @else if (m.estado === 'pendiente') {
+                  <small>{{ m.efecto.join(' · ') }}</small>
+                  @for (a of m.avisos; track a) {<small class="problema"><app-icono nombre="info" [tamano]="13" />{{ a }}</small>}
+                  @if (m.mensaje) {<small class="problema">La última vez: {{ m.mensaje }}</small>}
+                }
+                @else {<small>{{ m.mensaje }}</small>}
+              </span>
+              <span class="cuando">
+                @if (m.quincena) {<span class="mono">{{ m.tipoNomina ? m.tipoNomina + ' · ' : '' }}Q{{ m.quincena.toString().padStart(2, '0') }} {{ m.anio }}</span>}
+                <small>{{ m.estado === 'pendiente' || m.estado === 'aplicando' ? (m.fecha | fecha) : m.atendidoPor + ' · ' + (m.atendidoEl | fecha: true) }}</small>
+              </span>
+            </button>
+          </article>
+        }
+      </section>
+      @if (total() > porPagina) {
+        <div class="paginacion">
+          <span class="tenue chico">{{ desde() + 1 }} a {{ desde() + lista().length }} de {{ total() | numero }}</span>
+          <div class="acciones">
+            <button type="button" class="boton chico" [disabled]="!desde()" (click)="desde.set(desde() - porPagina)">Anteriores</button>
+            <button type="button" class="boton chico" [disabled]="desde() + lista().length >= total()" (click)="desde.set(desde() + porPagina)">Siguientes</button>
+          </div>
+        </div>
+      }
+    } @else if (!cargando()) {
+      <div class="nada">
+        <span class="figura grande"><app-icono [nombre]="estado() === 'pendiente' ? 'listo' : icono[s.clave]" [tamano]="26" /></span>
+        <p class="titulo-chico">
+          @if (q() || tipo()) {Nada con ese filtro}
+          @else if (estado() === 'pendiente') {{{ s.conectado || s.aplicados ? 'Todo al día' : 'Todavía no hay movimientos' }}}
+          @else if (estado() === 'aplicado') {Nada aplicado todavía}
+          @else {Nada descartado}
+        </p>
+        @if (estado() === 'pendiente' && !q() && !tipo()) {<p class="apagado">{{ s.conectado ? 'Cuando haya algo nuevo, tráelo con el botón de arriba.' : 'Aparecerán aquí al conectar ' + s.nombre + '.' }}</p>}
+      </div>
+    } @else {
+      <div class="esqueleto"></div><div class="esqueleto"></div><div class="esqueleto"></div>
+    }
+  }
+
+  @if (marcados().size) {
+    <div class="seleccion" role="status">
+      <span><strong>{{ marcados().size }}</strong> {{ marcados().size === 1 ? 'elegido' : 'elegidos' }}</span>
+      <button type="button" class="boton fantasma chico" (click)="quitarSeleccion()">Quitar selección</button>
+      <span class="aire"></span>
+      <button type="button" class="boton chico" [disabled]="ocupado()" (click)="pedirDescarte([...marcados()])">Descartar</button>
+      <button type="button" class="boton primario chico" [disabled]="ocupado()" (click)="aplicar([...marcados()])">{{ ocupado() ? 'Aplicando…' : 'Aplicar' }}</button>
+    </div>
+  }
+</div>
+
+<app-cajon [abierto]="!!abierto()" [titulo]="abierto()?.nombre ?? ''" [antetitulo]="(sistema()?.nombre ?? '') + ' · ' + (abierto()?.tipoNombre ?? '')" (cerrar)="abierto.set(null)">
+  @if (abierto(); as m) {
+    @if (m.problema) {<p class="nota rojo"><app-icono nombre="alerta" [tamano]="18" />{{ m.problema }}</p>}
+    @if (m.efecto.length) {
+      <h3 class="titulo-chico">Qué va a cambiar</h3>
+      <ul class="cambios">@for (e of m.efecto; track e) {<li>{{ e }}</li>}</ul>
+    }
+    @for (a of m.avisos; track a) {<p class="nota ambar aviso-mov">{{ a }}</p>}
+    <dl class="datos">
+      <div><dt>CURP</dt><dd class="mono">{{ m.curp ?? '—' }}</dd></div>
+      <div><dt>Fecha</dt><dd>{{ m.fecha | fecha }}</dd></div>
+      <div><dt>Quincena</dt><dd>{{ m.quincena ? 'Q' + m.quincena + ' de ' + m.anio : '—' }}</dd></div>
+      @if (m.lote) {<div><dt>{{ elegido() === 'prestamos' ? 'Préstamo' : 'Lote' }}</dt><dd class="mono">{{ m.lote }}</dd></div>}
+      <div><dt>Traído</dt><dd>{{ m.traidoEl | fecha: true }}</dd></div>
+      @if (m.atendidoPor) {<div><dt>{{ m.estado === 'aplicado' ? 'Aplicó' : 'Descartó' }}</dt><dd>{{ m.atendidoPor }} · {{ m.atendidoEl | fecha: true }}</dd></div>}
+      @if (m.mensaje) {<div><dt>Nota</dt><dd>{{ m.mensaje }}</dd></div>}
+    </dl>
+    @if (m.empleadoId) {<a class="boton chico" [routerLink]="['/empleados', m.empleadoId]">Ver su ficha</a>}
+  }
+  <ng-container pie>
+    @if (abierto(); as m) {
+      @if (puede && m.estado === 'pendiente') {
+        <button type="button" class="boton" style="margin-right: auto" (click)="pedirDescarte([m.id])">Descartar</button>
+        <button type="button" class="boton primario" [disabled]="!!m.problema || ocupado()" (click)="aplicar([m.id])">Aplicar</button>
+      } @else if (puede && m.estado === 'descartado') {
+        <button type="button" class="boton" (click)="restaurar(m)">Regresar a Por aplicar</button>
+      } @else {<button type="button" class="boton" (click)="abierto.set(null)">Cerrar</button>}
+    }
+  </ng-container>
+</app-cajon>
+
+<app-cajon [abierto]="!!descartando()" titulo="Descartar" [antetitulo]="sistema()?.nombre ?? ''" (cerrar)="descartando.set(null)">
+  <p class="apagado" style="margin-bottom: 14px">{{ descartando()?.length === 1 ? 'El movimiento no se aplicará.' : descartando()?.length + ' movimientos no se aplicarán.' }} Lo puedes regresar después.</p>
+  <label class="etiqueta" for="otros-motivo">Por qué</label>
+  <input id="otros-motivo" class="campo" maxlength="200" placeholder="Ya se capturó a mano" [(ngModel)]="motivo" (keydown.enter)="descartar()" />
+  <ng-container pie>
+    <button type="button" class="boton" (click)="descartando.set(null)">Cancelar</button>
+    <button type="button" class="boton peligro" [disabled]="motivo.trim().length < 3 || ocupado()" (click)="descartar()">Descartar</button>
+  </ng-container>
+</app-cajon>

@@ -7,6 +7,7 @@ import { CompartidoModule } from './common/compartido.module';
 import { CONEXIONES } from './config/conexiones';
 import { DispersionModule } from './dispersion/dispersion.module';
 import { EmpleadosModule } from './empleados/empleados.module';
+import { IntegracionesModule } from './integraciones/integraciones.module';
 import { ProcesosModule } from './procesos/procesos.module';
 import { QuincenaModule } from './quincena/quincena.module';
 import { ReportesModule } from './reportes/reportes.module';
@@ -30,6 +31,7 @@ import { VerificacionModule } from './verificacion/verificacion.module';
     ProcesosModule,
     TableroModule,
     AnalisisModule,
+    IntegracionesModule,
   ],
 })
 export class AppModule {}

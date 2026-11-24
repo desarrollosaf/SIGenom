@@ -11,6 +11,7 @@ import {
   Tabulador,
   TipoNomina,
 } from './models/catalogos.models';
+import { LecturaExterna, MovimientoExterno } from './models/externos.models';
 import { Calculo, Captura, Periodo, PeriodoConcepto, Recibo, ReciboConcepto } from './models/nomina.models';
 import {
   Bitacora,
@@ -49,6 +50,8 @@ export const MODELOS = [
   Recibo,
   ReciboConcepto,
   PeriodoConcepto,
+  MovimientoExterno,
+  LecturaExterna,
 ];
 
 /** Deja los modelos disponibles para los módulos de dominio. */
