@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { nombreQuincena } from '../common/fechas';
 import { Concepto, TipoNomina } from '../database/models/catalogos.models';
@@ -166,6 +166,15 @@ export class PeriodosService {
     if (await this.ajustes.count({ where: { periodoId: id, updatedAt: { [Op.gt]: nomina.iniciadoEl ?? nomina.createdAt } } })) {
       throw new BadRequestException('Cambiaste ajustes de claves después del último cálculo. Vuelve a calcular la nómina antes de cerrar.');
     }
+
+    // Lo que se borró después también deja viejo al cálculo, y ya no está en capturas: se mira en la bitácora.
+    const [{ borradas }] = await this.periodos.sequelize!.query<{ borradas: number }>(
+      `SELECT count(*)::int borradas FROM bitacora WHERE created_at > :inicio AND (
+         (entidad = 'captura' AND accion = 'baja' AND antes->>'periodoId' = :id)
+         OR (entidad = 'periodo' AND accion = 'deshace_captura_masiva' AND entidad_id = :id))`,
+      { type: QueryTypes.SELECT, replacements: { id: String(id), inicio: nomina.iniciadoEl ?? nomina.createdAt } },
+    );
+    if (borradas > 0) throw new BadRequestException('Borraste capturas después del último cálculo. Vuelve a calcular la nómina antes de cerrar.');
 
     // Un neto negativo no se puede pagar; el sistema anterior tampoco lo dejaba pasar (1CAL-N-P.W).
     const negativos = await this.recibos.count({

@@ -451,6 +451,47 @@ export interface UsuarioSistema {
   ultimoAcceso: string | null;
 }
 
+/** La misma clave a muchas personas. */
+export interface DatosMasiva {
+  conceptoId: number;
+  importe: number;
+  gravaIsr: boolean | null;
+  timbra: boolean | null;
+  referencia?: string;
+  filtro: { adscripciones?: number[]; nivelDesde?: number; nivelHasta?: number; omitirConClave: boolean; soloConPago: boolean };
+}
+
+export interface VistaMasiva {
+  personas: number;
+  total: number;
+  isr: number;
+  issemym: number;
+  neto: number;
+  netoMenor: number;
+  netoMayor: number;
+  conClave: number;
+  sinPago: number;
+  quedanNegativos: number;
+  naturaleza: 'P' | 'D';
+  cotiza: boolean;
+}
+
+export interface MasivaHecha {
+  id: number;
+  clave: number;
+  descripcion: string;
+  naturaleza: 'P' | 'D';
+  importe: number;
+  gravaIsr: boolean;
+  timbra: boolean;
+  referencia: string | null;
+  personas: number;
+  registradoPor: string;
+  creadaEl: string;
+  deshechoPor: string | null;
+  deshechoEl: string | null;
+}
+
 export type EstadoExterno = 'pendiente' | 'aplicando' | 'aplicado' | 'descartado';
 
 /** Un sistema del que se traen movimientos. */

@@ -22,6 +22,7 @@ export type Origen = keyof typeof ORIGENES;
 
 /** Orígenes que pone el sistema: se muestran y se filtran, pero no se eligen al importar un archivo. */
 export const ORIGENES_SISTEMA = {
+  masiva: 'Captura a varias personas',
   ajuste_neto: 'Ajuste de neto (Verificación)',
   retroactivo: 'Retroactivo de aumento',
   checador: 'Checadores',

@@ -83,6 +83,56 @@ export class Captura extends Model {
   @Column(DataType.STRING(20))
   declare registradoPor: string;
 
+  /** Si se capturó junto con muchas personas. */
+  @Column(DataType.INTEGER)
+  declare masivaId: number | null;
+
+  declare createdAt: Date;
+}
+
+/** La misma clave capturada a muchas personas de una vez. */
+@Table({ tableName: 'capturas_masivas', underscored: true, timestamps: true })
+export class CapturaMasiva extends Model {
+  @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
+  declare id: number;
+
+  @Column(DataType.INTEGER)
+  declare periodoId: number;
+
+  @ForeignKey(() => Concepto)
+  @Column(DataType.INTEGER)
+  declare conceptoId: number;
+
+  @BelongsTo(() => Concepto)
+  declare concepto: Concepto;
+
+  @Column(dinero('importe'))
+  declare importe: number;
+
+  @Column(DataType.BOOLEAN)
+  declare gravaIsr: boolean | null;
+
+  @Column(DataType.BOOLEAN)
+  declare timbra: boolean | null;
+
+  @Column(DataType.STRING(80))
+  declare referencia: string | null;
+
+  @Column(DataType.JSONB)
+  declare filtro: object;
+
+  @Column(DataType.INTEGER)
+  declare personas: number;
+
+  @Column(DataType.STRING(20))
+  declare registradoPor: string;
+
+  @Column(DataType.STRING(20))
+  declare deshechoPor: string | null;
+
+  @Column(DataType.DATE)
+  declare deshechoEl: Date | null;
+
   declare createdAt: Date;
 }
 

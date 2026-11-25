@@ -6,6 +6,8 @@ import { AuthService } from '../../core/services/auth.service';
 import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
 import type { Calculo, Diagnostico, PeriodoDetalle, ReciboFila, TipoCalculo } from '../../core/services/modelos';
+import { OtrosSistemas } from '../otros-sistemas/otros-sistemas';
+import { Ventana } from '../../shared/ventana/ventana';
 import { AjustesQuincena } from '../calculo/ajustes-quincena';
 import { CapturaPagina } from '../captura/captura';
 import { Pagos } from '../pagos/pagos';
@@ -38,7 +40,7 @@ const PASOS: Paso[] = [
  */
 @Component({
   selector: 'app-proceso',
-  imports: [NgTemplateOutlet, RouterLink, Icono, CapturaPagina, AjustesQuincena, Verificacion, Pagos, ...FORMATO],
+  imports: [NgTemplateOutlet, RouterLink, Icono, CapturaPagina, AjustesQuincena, OtrosSistemas, Ventana, Verificacion, Pagos, ...FORMATO],
   templateUrl: './proceso.html',
   styleUrl: './proceso.scss',
 })
@@ -56,6 +58,9 @@ export class Proceso {
   protected readonly observados = signal<ReciboFila[]>([]);
   /** Movimientos de otros sistemas que nadie ha aplicado. */
   protected readonly externos = signal(0);
+  protected readonly verExternos = signal(false);
+  /** Sube cuando cambió lo capturado fuera del paso, para que su lista se vuelva a pedir. */
+  protected readonly version = signal(0);
   protected readonly activo = signal<ClavePaso>('captura');
   protected readonly enviando = signal(false);
   /** Pasos que no dejan huella en la base y que la persona dio por buenos con "Continuar". */
@@ -124,7 +129,7 @@ export class Proceso {
         else this.detalle.set(null);
       });
     });
-    this.api.sistemasExternos().subscribe({ next: (l) => this.externos.set(l.reduce((s, x) => s + x.pendientes, 0)), error: () => undefined });
+    this.contarExternos();
     const temporizador = setInterval(() => this.vigilar(), 1500);
     inject(DestroyRef).onDestroy(() => clearInterval(temporizador));
   }
@@ -204,6 +209,18 @@ export class Proceso {
   protected empezarSiguiente(): void {
     this.recienCerrada.set(null);
     this.activo.set('captura');
+  }
+
+  /** Al cerrar la ventana, lo aplicado ya cuenta en la quincena. */
+  protected cerrarExternos(): void {
+    this.verExternos.set(false);
+    this.contarExternos();
+    this.actualizar();
+    this.version.update((v) => v + 1);
+  }
+
+  private contarExternos(): void {
+    this.api.sistemasExternos().subscribe({ next: (l) => this.externos.set(l.reduce((s, x) => s + x.pendientes, 0)), error: () => undefined });
   }
 
   /** Se recalculó desde Verificación. */

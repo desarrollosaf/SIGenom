@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, mensajeDeError } from '../../core/services/api.service';
@@ -24,6 +24,8 @@ const POR_PAGINA = 100;
   styleUrl: './otros-sistemas.scss',
 })
 export class OtrosSistemas {
+  /** Dentro de una ventana: sin encabezado de página. */
+  readonly incrustado = input(false);
   private readonly api = inject(ApiService);
   private readonly avisos = inject(AvisosService);
   protected readonly contexto = inject(ContextoService);

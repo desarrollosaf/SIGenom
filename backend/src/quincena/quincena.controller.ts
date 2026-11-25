@@ -17,7 +17,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import type { Response } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,6 +29,7 @@ import { CalculosService } from './calculos.service';
 import { AjusteNetoService } from './ajuste-neto.service';
 import { CapturasService, ORIGENES, ORIGENES_SISTEMA } from './capturas.service';
 import type { Origen } from './capturas.service';
+import { MasivasService } from './masivas.service';
 import { PeriodosService } from './periodos.service';
 import { ReciboPdfService } from './recibo-pdf.service';
 import { RetroactivoService } from './retroactivo.service';
@@ -91,6 +93,27 @@ class AplicarAjusteDto {
   @IsOptional() @IsString() @MaxLength(80) motivo?: string;
 }
 
+class FiltroMasivaDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(500) @IsInt({ each: true }) adscripciones?: number[];
+  @IsOptional() @IsInt() @Min(0) nivelDesde?: number;
+  @IsOptional() @IsInt() @Min(0) nivelHasta?: number;
+  @IsBoolean() omitirConClave: boolean;
+  @IsBoolean() soloConPago: boolean;
+}
+
+class MasivaDto {
+  @IsInt() conceptoId: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(1000000) importe: number;
+  @IsOptional() @IsBoolean() gravaIsr?: boolean | null;
+  @IsOptional() @IsBoolean() timbra?: boolean | null;
+  @IsOptional() @IsString() @MaxLength(80) referencia?: string;
+  @ValidateNested() @Type(() => FiltroMasivaDto) filtro: FiltroMasivaDto;
+}
+
+class AplicarMasivaDto extends MasivaDto {
+  @IsInt() @Min(1) personas: number;
+}
+
 class RetroactivoDto {
   @IsDateString() desde: string;
 }
@@ -109,6 +132,7 @@ export class QuincenaController {
     private readonly pdf: ReciboPdfService,
     private readonly ajusteNeto: AjusteNetoService,
     private readonly retroactivo: RetroactivoService,
+    private readonly masivas: MasivasService,
   ) {}
 
   // --- Periodos -----------------------------------------------------------------------------
@@ -232,6 +256,33 @@ export class QuincenaController {
   @HttpCode(HttpStatus.NO_CONTENT)
   borrarCaptura(@Param('id', ParseIntPipe) id: number, @Usuario() u: UsuarioActual) {
     return this.capturas.eliminar(id, u.usuario);
+  }
+
+  // --- La misma clave a varias personas -----------------------------------------------------
+
+  @Get('periodos/:id/masivas')
+  listarMasivas(@Param('id', ParseIntPipe) id: number) {
+    return this.masivas.listar(id);
+  }
+
+  @Post('periodos/:id/masivas/vista-previa')
+  @HttpCode(HttpStatus.OK)
+  vistaMasiva(@Param('id', ParseIntPipe) id: number, @Body() dto: MasivaDto) {
+    return this.masivas.vista(id, dto);
+  }
+
+  @Post('periodos/:id/masivas')
+  @Roles(...PUEDEN_OPERAR)
+  aplicarMasiva(@Param('id', ParseIntPipe) id: number, @Body() dto: AplicarMasivaDto, @Usuario() u: UsuarioActual) {
+    const { personas, ...datos } = dto;
+    return this.masivas.aplicar(id, datos, personas, u.usuario);
+  }
+
+  @Post('periodos/:id/masivas/:masiva/deshacer')
+  @Roles(...PUEDEN_OPERAR)
+  @HttpCode(HttpStatus.OK)
+  deshacerMasiva(@Param('id', ParseIntPipe) id: number, @Param('masiva', ParseIntPipe) masiva: number, @Usuario() u: UsuarioActual) {
+    return this.masivas.deshacer(id, masiva, u.usuario);
   }
 
   // --- Ajuste de neto y retroactivo ---------------------------------------------------------

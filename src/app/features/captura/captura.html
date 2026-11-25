@@ -27,8 +27,18 @@
 
       <!-- Captura manual -->
       <section class="tarjeta con-relleno">
-        <h2 class="titulo-chico">Capturar</h2>
-        @if (puede()) {
+        <div class="cabeza-captura">
+          <h2 class="titulo-chico">Capturar</h2>
+          @if (puede()) {
+            <div class="selector" role="group" aria-label="A quiénes capturar">
+              <button type="button" [class.activo]="modo() === 'una'" [attr.aria-pressed]="modo() === 'una'" (click)="modo.set('una')">A una persona</button>
+              <button type="button" [class.activo]="modo() === 'varias'" [attr.aria-pressed]="modo() === 'varias'" (click)="modo.set('varias')">A varias o a todos</button>
+            </div>
+          }
+        </div>
+        @if (puede() && modo() === 'varias') {
+          <app-captura-masiva [periodoId]="contexto.periodo()!.id" (cambiada)="recargar()" />
+        } @else if (puede()) {
           <div class="formulario uno" style="margin-top: 12px">
             <div>
               <label class="etiqueta">Empleado</label>

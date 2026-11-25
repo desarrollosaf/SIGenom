@@ -7,7 +7,7 @@ import { Icono } from '../icono/icono';
   selector: 'app-avisos',
   imports: [Icono],
   template: `
-    <div class="pila" aria-live="polite">
+    <div #pila class="pila" popover="manual" aria-live="polite">
       @for (aviso of servicio.avisos(); track aviso.id) {
         <div class="aviso" [class.error]="aviso.tipo === 'error'" role="status">
           <app-icono [nombre]="aviso.tipo === 'error' ? 'alerta' : 'listo'" [tamano]="16" />
@@ -38,15 +38,20 @@ import { Icono } from '../icono/icono';
   styles: `
     .pila {
       position: fixed;
-      z-index: 60;
-      right: 20px;
-      bottom: 20px;
-      display: flex;
+      inset: auto 20px 20px auto;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      overflow: visible;
       flex-direction: column;
       align-items: flex-end;
       gap: 8px;
       width: min(calc(100vw - 32px), 420px);
       pointer-events: none;
+    }
+    .pila:popover-open {
+      display: flex;
     }
     .aviso {
       display: flex;
@@ -98,8 +103,7 @@ import { Icono } from '../icono/icono';
     }
     @media (max-width: 640px) {
       .pila {
-        right: 16px;
-        left: 16px;
+        inset: auto 16px 16px;
         width: auto;
         align-items: stretch;
       }
@@ -109,8 +113,16 @@ import { Icono } from '../icono/icono';
 export class Avisos {
   protected readonly servicio = inject(AvisosService);
   private readonly dialogo = viewChild.required<ElementRef<HTMLDialogElement>>('dialogo');
+  private readonly pila = viewChild.required<ElementRef<HTMLElement>>('pila');
 
   constructor() {
+    // Con cada aviso se vuelve a mostrar: así queda por encima de cualquier ventana o cajón abierto.
+    effect(() => {
+      const hay = this.servicio.avisos().length > 0;
+      const pila = this.pila().nativeElement;
+      if (pila.matches(':popover-open')) pila.hidePopover();
+      if (hay) pila.showPopover();
+    });
     effect(() => {
       const elemento = this.dialogo().nativeElement;
       if (this.servicio.confirmacion()) {

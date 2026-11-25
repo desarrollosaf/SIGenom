@@ -74,14 +74,14 @@
           @if (prenominaVieja()) {
             <p class="aviso ambar"><app-icono nombre="alerta" [tamano]="18" />Capturaste {{ prenominaVieja() }} movimientos después de la prenómina. Al continuar, vuelve a calcularla.</p>
           }
-          <a class="tarjeta otros" routerLink="/otros-sistemas">
+          <button type="button" class="tarjeta otros" (click)="verExternos.set(true)">
             <span class="otros-icono"><app-icono nombre="descarga" [tamano]="20" /></span>
             <span class="otros-texto"><strong>Otros sistemas</strong><small>Trae altas, bajas y licencias de Personal, faltas de Checadores y movimientos de Préstamos</small></span>
             @if (externos()) {<span class="insignia verde">{{ externos() | numero }} por aplicar</span>}
             <app-icono nombre="flecha" [tamano]="16" />
-          </a>
+          </button>
           <app-ajustes-quincena [periodoId]="contexto.periodo()!.id" [puede]="puedeCalcular() && contexto.abierto()" />
-          <app-captura [incrustado]="true" />
+          <app-captura [incrustado]="true" [version]="version()" (cambiada)="actualizar()" />
         }
 
         @case ('prenomina') {
@@ -245,3 +245,9 @@
     @if (!puedeCalcular()) {<p class="tenue chico">Tu usuario solo puede consultar.</p>}
   }
 </ng-template>
+
+<app-ventana [abierta]="verExternos()" titulo="Otros sistemas" subtitulo="Trae los movimientos, revisa qué van a cambiar y aplícalos" regresar="Proceso de nómina" (cerrar)="cerrarExternos()">
+  @if (verExternos()) {
+    @defer {<app-otros-sistemas [incrustado]="true" />} @placeholder {<div class="esqueleto" style="height: 120px"></div>}
+  }
+</app-ventana>

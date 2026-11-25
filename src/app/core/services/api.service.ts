@@ -7,12 +7,14 @@ import type {
   AjusteQuincena,
   Calculo,
   Captura,
+  DatosMasiva,
   DefinicionCatalogo,
   DefinicionReporte,
   Diagnostico,
   EmpleadoResumen,
   FichaEmpleado,
   ImpactoMovimiento,
+  MasivaHecha,
   MovimientoExterno,
   MovimientoLista,
   DatosAnalisis,
@@ -32,6 +34,7 @@ import type {
   Tablero,
   TipoCalculo,
   UsuarioSistema,
+  VistaMasiva,
   VistaRetroactivo,
 } from './modelos';
 
@@ -329,6 +332,22 @@ export class ApiService {
 
   editarUsuario(id: number, datos: Partial<{ nombre: string; rol: string; activo: boolean; password: string }>) {
     return this.http.patch<UsuarioSistema>(`${this.url}/usuarios/${id}`, datos);
+  }
+
+  masivas(periodoId: number): Observable<MasivaHecha[]> {
+    return this.http.get<MasivaHecha[]>(`${this.url}/periodos/${periodoId}/masivas`);
+  }
+
+  vistaMasiva(periodoId: number, datos: DatosMasiva): Observable<VistaMasiva> {
+    return this.http.post<VistaMasiva>(`${this.url}/periodos/${periodoId}/masivas/vista-previa`, datos);
+  }
+
+  aplicarMasiva(periodoId: number, datos: DatosMasiva & { personas: number }) {
+    return this.http.post<{ id: number; personas: number }>(`${this.url}/periodos/${periodoId}/masivas`, datos);
+  }
+
+  deshacerMasiva(periodoId: number, id: number) {
+    return this.http.post<{ borradas: number }>(`${this.url}/periodos/${periodoId}/masivas/${id}/deshacer`, {});
   }
 
   sistemasExternos(): Observable<SistemaExterno[]> {

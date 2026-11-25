@@ -1,11 +1,14 @@
-<div class="pagina">
-  <header class="encabezado">
-    <div>
-      <p class="antetitulo">Quincena</p>
-      <h1 class="titulo">Otros sistemas</h1>
-      <p class="apagado">Trae los movimientos, revisa qué van a cambiar y aplícalos.</p>
-    </div>
-  </header>
+<div [class.pagina]="!incrustado()">
+  @if (!incrustado()) {
+    <a class="boton fantasma chico" routerLink="/proceso"><app-icono nombre="atras" [tamano]="15" />Proceso de nómina</a>
+    <header class="encabezado" style="margin-top: 12px">
+      <div>
+        <p class="antetitulo">Quincena</p>
+        <h1 class="titulo">Otros sistemas</h1>
+        <p class="apagado">Trae los movimientos, revisa qué van a cambiar y aplícalos.</p>
+      </div>
+    </header>
+  }
 
   <nav class="sistemas" aria-label="Sistemas">
     @for (s of sistemas(); track s.clave) {

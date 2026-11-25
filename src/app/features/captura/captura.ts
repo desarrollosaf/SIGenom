@@ -1,4 +1,4 @@
-import { Component, computed, effect, ElementRef, inject, signal, viewChild, input } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, mensajeDeError } from '../../core/services/api.service';
@@ -10,6 +10,7 @@ import { BuscarClave } from '../../shared/buscar-clave/buscar-clave';
 import { BuscarEmpleado } from '../../shared/buscar-empleado/buscar-empleado';
 import { Cajon } from '../../shared/cajon/cajon';
 import { FORMATO } from '../../shared/formato';
+import { CapturaMasivaPanel } from './captura-masiva';
 import { MarcasClave } from '../../shared/marcas-clave/marcas-clave';
 import { Icono } from '../../shared/icono/icono';
 
@@ -19,13 +20,15 @@ import { Icono } from '../../shared/icono/icono';
  */
 @Component({
   selector: 'app-captura',
-  imports: [FormsModule, RouterLink, Icono, BuscarClave, BuscarEmpleado, Cajon, MarcasClave, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, BuscarClave, BuscarEmpleado, Cajon, CapturaMasivaPanel, MarcasClave, ...FORMATO],
   templateUrl: './captura.html',
   styleUrl: './captura.scss',
 })
 export class CapturaPagina {
   /** Dentro del asistente de Proceso de nómina: sin encabezado de página. */
   readonly incrustado = input(false);
+  /** Al cambiar, se vuelve a pedir la lista. */
+  readonly version = input(0);
   private readonly api = inject(ApiService);
   private readonly avisos = inject(AvisosService);
   protected readonly contexto = inject(ContextoService);
@@ -39,6 +42,9 @@ export class CapturaPagina {
   protected readonly filtro = signal('');
   protected readonly filtroOrigen = signal('');
   protected readonly guardando = signal(false);
+  protected readonly modo = signal<'una' | 'varias'>('una');
+  /** Cambió lo capturado (para que el asistente actualice sus totales). */
+  readonly cambiada = output<void>();
   /** Captura a la que se le cambian las marcas. */
   protected readonly marcando = signal<{ captura: Captura; gravaIsr: boolean | null; timbra: boolean | null } | null>(null);
 
@@ -64,6 +70,7 @@ export class CapturaPagina {
     effect(() => {
       const p = this.contexto.periodo();
       const filtro = { q: this.filtro().trim(), origen: this.filtroOrigen() };
+      this.version();
       if (this.espera) clearTimeout(this.espera);
       if (p) this.espera = setTimeout(() => this.cargar(p.id, filtro), filtro.q ? 300 : 0);
     });
@@ -81,6 +88,12 @@ export class CapturaPagina {
     this.api.resumenCapturas(periodoId, filtro).subscribe({ next: (r) => this.totales.set(r), error: fallo });
     const e = this.empleado();
     if (e) this.api.capturas(periodoId, { empleadoId: e.id }).subscribe((c) => this.delEmpleado.set(c));
+  }
+
+  protected recargar(): void {
+    const p = this.contexto.periodo();
+    if (p) this.cargar(p.id);
+    this.cambiada.emit();
   }
 
   protected elegir(e: EmpleadoResumen): void {

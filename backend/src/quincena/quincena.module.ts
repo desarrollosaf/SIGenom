@@ -4,6 +4,7 @@ import { COLA_CALCULOS } from '../config/conexiones';
 import { AjusteNetoService } from './ajuste-neto.service';
 import { CalculosService } from './calculos.service';
 import { CapturasService } from './capturas.service';
+import { MasivasService } from './masivas.service';
 import { PeriodosService } from './periodos.service';
 import { QuincenaController } from './quincena.controller';
 import { ReciboPdfService } from './recibo-pdf.service';
@@ -13,7 +14,7 @@ import { RetroactivoService } from './retroactivo.service';
 @Module({
   imports: [BullModule.registerQueue({ name: COLA_CALCULOS })],
   controllers: [QuincenaController],
-  providers: [PeriodosService, CapturasService, CalculosService, ReciboPdfService, AjusteNetoService, RetroactivoService],
+  providers: [PeriodosService, CapturasService, CalculosService, ReciboPdfService, AjusteNetoService, RetroactivoService, MasivasService],
   exports: [PeriodosService, CalculosService, CapturasService],
 })
 export class QuincenaModule {}
