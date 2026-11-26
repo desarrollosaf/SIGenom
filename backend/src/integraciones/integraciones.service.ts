@@ -13,6 +13,7 @@ import { MovimientosService } from '../empleados/movimientos.service';
 import { CapturasService } from '../quincena/capturas.service';
 import { PeriodosService } from '../quincena/periodos.service';
 import { Lector, LECTORES, Renglon } from './lectores';
+import { LIMITE_PERSONAL, PersonalApi } from './personal.api';
 import { Accion, ConceptoPlan, Contexto, Plan, planear } from './planes';
 
 /** Cuántos renglones se vuelven a mirar en cada lectura, por si otro sistema confirmó uno tarde. */
@@ -22,8 +23,8 @@ const POR_PAGINA = 100;
 const APARTADO_MS = 10 * 60_000;
 
 /**
- * Trae a una bandeja los movimientos de otros sistemas y los aplica cuando alguien los revisa. Al otro
- * sistema solo se le lee: la conexión se abre de solo lectura y no se le escribe nada.
+ * Trae a una bandeja los movimientos de otros sistemas y los aplica cuando alguien los revisa. A las bases
+ * de Checadores y Préstamos solo se les lee. A Personal, por su API, se le avisa qué se tomó y qué se regresa.
  */
 @Injectable()
 export class IntegracionesService {
@@ -61,7 +62,7 @@ export class IntegracionesService {
           nombre: l.nombre,
           descripcion: l.descripcion,
           tipos: l.tipos,
-          conectado: !!this.conexionDe(l),
+          conectado: l.sql ? !!this.conexionDe(l) : !!PersonalApi.configurada(),
           pendientes: total('pendiente') + total('aplicando'),
           aplicados: total('aplicado'),
           descartados: total('descartado'),
@@ -74,6 +75,8 @@ export class IntegracionesService {
   /** Lee lo nuevo del otro sistema. Nada se aplica todavía. */
   async traer(sistema: string, usuario: string) {
     const lector = this.lector(sistema);
+    if (!lector.sql) return this.traerPersonal(lector, usuario);
+    const { sql } = lector;
     const conexion = this.conexionDe(lector);
     if (!conexion) throw new BadRequestException(`Falta configurar la conexión con ${lector.nombre} en el servidor (docs/integraciones.md).`);
     const db = new Sequelize({
@@ -91,7 +94,7 @@ export class IntegracionesService {
       );
       let desde = Math.max(0, Number(ultimo ?? 0) - TRASLAPE);
       for (;;) {
-        const renglones = await db.query<Renglon>(lector.sql, { type: QueryTypes.SELECT, replacements: { desde } });
+        const renglones = await db.query<Renglon>(sql, { type: QueryTypes.SELECT, replacements: { desde } });
         if (!renglones.length) break;
         const leidos = renglones.map((r) => lector.leer(r));
         const vistos = new Set(
@@ -114,6 +117,59 @@ export class IntegracionesService {
     await this.lecturas.create({ sistema: lector.clave, usuario, nuevos, error: null });
     if (nuevos) await this.bitacora.registrar({ usuario, entidad: `externo:${lector.clave}`, accion: 'trae_movimientos', despues: { nuevos } });
     return { nuevos };
+  }
+
+  private async traerPersonal(lector: Lector, usuario: string) {
+    const api = this.personal();
+    let nuevos = 0;
+    try {
+      nuevos = (await this.sincronizar(lector, api)).nuevos;
+    } catch (e) {
+      const detalle = detalleDe(e);
+      this.logger.error(`${lector.nombre}: ${detalle}`);
+      await this.lecturas.create({ sistema: lector.clave, usuario, nuevos, error: detalle.slice(0, 500) });
+      throw new BadRequestException(`No se pudo leer ${lector.nombre}. ${explicar(detalle)}`);
+    }
+    await this.lecturas.create({ sistema: lector.clave, usuario, nuevos, error: null });
+    if (nuevos) await this.bitacora.registrar({ usuario, entidad: `externo:${lector.clave}`, accion: 'trae_movimientos', despues: { nuevos } });
+    return { nuevos };
+  }
+
+  /** Deja la bandeja igual a lo que Personal tiene pendiente: lo nuevo, lo corregido y lo que se canceló allá. */
+  private async sincronizar(lector: Lector, api: PersonalApi) {
+    const renglones = await api.pendientes();
+    const leidos = renglones.map((r) => lector.leer(r));
+    const ids = leidos.map((l) => l.externoId);
+    const guardados = new Map((await this.externos.findAll({ where: { sistema: lector.clave, externoId: ids } })).map((g) => [g.externoId, g]));
+    const faltan = leidos.filter((l) => !guardados.has(l.externoId));
+    await this.externos.bulkCreate(faltan.map((l) => ({ ...l, sistema: lector.clave, estado: 'pendiente' })), { ignoreDuplicates: true });
+
+    const cambiados = new Set<number>();
+    const porConfirmar: string[] = [];
+    for (const l of leidos) {
+      const g = guardados.get(l.externoId);
+      if (!g || g.estado === 'aplicando') continue;
+      if (g.datos.huella === l.datos.huella) {
+        // Se aplicó aquí pero allá no quedó avisado (se cortó la conexión).
+        if (g.estado === 'aplicado') porConfirmar.push(String(l.datos.folio));
+        continue;
+      }
+      const mensaje =
+        g.estado === 'aplicado' ? 'Cambió en Personal después de aplicarlo: revisa qué falta.' : g.estado === 'descartado' ? 'Lo corrigieron en Personal.' : null;
+      const [cambio] = await this.externos.update(
+        { ...l, estado: 'pendiente', mensaje, atendidoPor: null, atendidoEl: null },
+        { where: { id: g.id, estado: g.estado } },
+      );
+      if (cambio) cambiados.add(g.id);
+    }
+    if (renglones.length < LIMITE_PERSONAL) {
+      await this.externos.update(
+        { estado: 'descartado', mensaje: 'Ya no está pendiente en Personal.', atendidoPor: 'PERSONAL', atendidoEl: new Date() },
+        { where: { sistema: lector.clave, estado: 'pendiente', externoId: { [Op.notIn]: ids } } },
+      );
+    }
+    if (porConfirmar.length) await api.confirmar(porConfirmar);
+    return { nuevos: faltan.length, cambiados };
   }
 
   async listar(sistema: string, filtro: { estado?: string; tipo?: string; q?: string; desde?: number }) {
@@ -165,9 +221,24 @@ export class IntegracionesService {
   /** Aplica uno por uno y en el orden en que llegaron; lo que no se puede, se queda con su motivo. */
   async aplicar(sistema: string, ids: number[], usuario: string) {
     const lector = this.lector(sistema);
+    const api = lector.sql ? null : this.personal();
+    let cambiados = new Set<number>();
+    if (api) {
+      // Antes de aplicar se vuelve a ver cómo está allá: pudieron corregirlo o cancelarlo.
+      try {
+        cambiados = (await this.sincronizar(lector, api)).cambiados;
+      } catch (e) {
+        throw new BadRequestException(`No se pudo leer ${lector.nombre}. ${explicar(detalleDe(e))}`);
+      }
+    }
     const filas = await this.externos.findAll({ where: { id: ids, sistema: lector.clave, estado: 'pendiente' }, order: [['id', 'ASC']] });
-    const resultado = { aplicados: 0, errores: [] as { id: number; nombre: string; error: string }[] };
+    const resultado = { aplicados: 0, errores: [] as { id: number; nombre: string; error: string }[], aviso: null as string | null };
+    const folios: string[] = [];
     for (const m of filas) {
+      if (cambiados.has(m.id)) {
+        resultado.errores.push({ id: m.id, nombre: m.nombre, error: 'Acaba de cambiar en Personal: revísalo otra vez.' });
+        continue;
+      }
       // Se aparta antes de aplicar: si dos personas lo aplican a la vez, solo una lo logra.
       const [apartado] = await this.externos.update({ estado: 'aplicando' }, { where: { id: m.id, estado: 'pendiente' } });
       if (!apartado) continue;
@@ -185,6 +256,7 @@ export class IntegracionesService {
           despues: { empleadoId, externo: m.externoId, tipo: lector.tipos[m.tipo] ?? m.tipo, efecto: plan.efecto },
         });
         resultado.aplicados++;
+        if (api) folios.push(String(m.datos.folio));
       } catch (e) {
         const error = mensajeDe(e);
         // Por id y no con m.update: en memoria `m` sigue como pendiente y no guardaría el cambio.
@@ -192,16 +264,60 @@ export class IntegracionesService {
         resultado.errores.push({ id: m.id, nombre: m.nombre, error });
       }
     }
+    if (api && filas.length < ids.length) resultado.aviso = `${ids.length - filas.length} ya no estaban pendientes.`;
+    if (api && folios.length) {
+      try {
+        const { errores } = await api.confirmar(folios);
+        if (errores.length) resultado.aviso = `Personal los recibió, pero no pudo registrar en SAF: ${errores.map((e) => e.folio).join(', ')}.`;
+      } catch (e) {
+        this.logger.error(`${lector.nombre}: ${detalleDe(e)}`);
+        resultado.aviso = 'Se aplicaron, pero Personal no respondió. Se le avisa la próxima vez que traigas movimientos.';
+      }
+    }
     return resultado;
   }
 
-  async descartar(sistema: string, ids: number[], motivo: string, usuario: string) {
+  /** @param hecho solo Personal: ya está hecho en nómina, así que se confirma allá en vez de regresarlo para corregir. */
+  async descartar(sistema: string, ids: number[], motivo: string, usuario: string, hecho = false) {
     const lector = this.lector(sistema);
+    if (!lector.sql) return this.descartarPersonal(lector, ids, motivo, usuario, hecho);
     const [descartados] = await this.externos.update(
       { estado: 'descartado', mensaje: motivo, atendidoPor: usuario, atendidoEl: new Date() },
       { where: { id: ids, sistema: lector.clave, estado: 'pendiente' } },
     );
     await this.bitacora.registrar({ usuario, entidad: `externo:${lector.clave}`, accion: 'descarta_movimientos', despues: { ids, motivo, descartados } });
+    return { descartados };
+  }
+
+  /** Primero se avisa a Personal y luego se guarda: si allá falla, aquí no cambia. */
+  private async descartarPersonal(lector: Lector, ids: number[], motivo: string, usuario: string, hecho: boolean) {
+    const api = this.personal();
+    const filas = await this.externos.findAll({ where: { id: ids, sistema: lector.clave, estado: 'pendiente' }, order: [['id', 'ASC']] });
+    const guardar = async (cuales: MovimientoExterno[]) =>
+      (
+        await this.externos.update(
+          { estado: 'descartado', mensaje: hecho ? `Ya estaba hecho: ${motivo}` : motivo, atendidoPor: usuario, atendidoEl: new Date() },
+          { where: { id: cuales.map((m) => m.id), estado: 'pendiente' } },
+        )
+      )[0];
+    let descartados = 0;
+    try {
+      if (hecho && filas.length) {
+        await api.confirmar(filas.map((m) => String(m.datos.folio)));
+        descartados = await guardar(filas);
+      } else {
+        for (const m of filas) {
+          await api.rechazar(String(m.datos.folio), motivo);
+          descartados += await guardar([m]);
+        }
+      }
+    } catch (e) {
+      const detalle = detalleDe(e);
+      this.logger.error(`${lector.nombre}: ${detalle}`);
+      throw new BadRequestException(`${descartados ? `Se descartaron ${descartados}; el resto no. ` : 'No se descartó. '}${explicar(detalle)}`);
+    } finally {
+      if (descartados) await this.bitacora.registrar({ usuario, entidad: `externo:${lector.clave}`, accion: 'descarta_movimientos', despues: { ids, motivo, hecho, descartados } });
+    }
     return { descartados };
   }
 
@@ -337,7 +453,13 @@ export class IntegracionesService {
     return l;
   }
 
-  /** EXT_PERSONAL_HOST, EXT_CHECADOR_HOST, EXT_PRESTAMOS_HOST… Sin host o sin base, no está conectado. */
+  private personal(): PersonalApi {
+    const api = PersonalApi.configurada();
+    if (!api) throw new BadRequestException('Falta configurar la conexión con Personal en el servidor (docs/integraciones.md).');
+    return api;
+  }
+
+  /** EXT_CHECADOR_HOST, EXT_PRESTAMOS_HOST… Sin host o sin base, no está conectado. */
   private conexionDe(l: Lector) {
     const v = (campo: string) => process.env[`EXT_${l.clave.toUpperCase()}_${campo}`]?.trim() || undefined;
     const [host, database] = [v('HOST'), v('BASE')];
@@ -355,8 +477,19 @@ function mensajeDe(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** El motivo real de un fetch que no conectó viene en `cause`. */
+function detalleDe(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const causa = e.cause as { code?: string } | undefined;
+  return causa?.code ? `${e.message} (${causa.code})` : e.message;
+}
+
 /** Qué decirle a la persona; el detalle técnico queda en el registro. */
 function explicar(detalle: string): string {
+  if (/^HTTP 401/.test(detalle)) return 'La llave no coincide con la de Personal.';
+  if (/^HTTP 503/.test(detalle)) return 'A Personal le falta su NOMINA_API_KEY.';
+  if (/^HTTP 409/.test(detalle)) return 'Personal ya lo tenía como enviado; trae los movimientos otra vez.';
+  if (/^HTTP 404/.test(detalle)) return 'Personal no lo encontró; revisa la dirección de la conexión.';
   if (/does not exist/i.test(detalle) && /relation|column/i.test(detalle)) return 'La tabla de control no existe o no tiene las columnas esperadas.';
   if (/password|authentication|role .* does not exist/i.test(detalle)) return 'El usuario o la contraseña de la conexión no son correctos.';
   if (/permission denied/i.test(detalle)) return 'El usuario de la conexión no tiene permiso de leer esa tabla.';

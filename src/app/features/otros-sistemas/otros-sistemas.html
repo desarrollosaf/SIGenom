@@ -144,7 +144,7 @@
       <div><dt>CURP</dt><dd class="mono">{{ m.curp ?? '—' }}</dd></div>
       <div><dt>Fecha</dt><dd>{{ m.fecha | fecha }}</dd></div>
       <div><dt>Quincena</dt><dd>{{ m.quincena ? 'Q' + m.quincena + ' de ' + m.anio : '—' }}</dd></div>
-      @if (m.lote) {<div><dt>{{ elegido() === 'prestamos' ? 'Préstamo' : 'Lote' }}</dt><dd class="mono">{{ m.lote }}</dd></div>}
+      @if (m.lote) {<div><dt>{{ elegido() === 'prestamos' ? 'Préstamo' : 'Folio' }}</dt><dd class="mono">{{ m.lote }}</dd></div>}
       <div><dt>Traído</dt><dd>{{ m.traidoEl | fecha: true }}</dd></div>
       @if (m.atendidoPor) {<div><dt>{{ m.estado === 'aplicado' ? 'Aplicó' : 'Descartó' }}</dt><dd>{{ m.atendidoPor }} · {{ m.atendidoEl | fecha: true }}</dd></div>}
       @if (m.mensaje) {<div><dt>Nota</dt><dd>{{ m.mensaje }}</dd></div>}
@@ -164,9 +164,15 @@
 </app-cajon>
 
 <app-cajon [abierto]="!!descartando()" titulo="Descartar" [antetitulo]="sistema()?.nombre ?? ''" (cerrar)="descartando.set(null)">
-  <p class="apagado" style="margin-bottom: 14px">{{ descartando()?.length === 1 ? 'El movimiento no se aplicará.' : descartando()?.length + ' movimientos no se aplicarán.' }} Lo puedes regresar después.</p>
+  <p class="apagado" style="margin-bottom: 14px">{{ descartando()?.length === 1 ? 'El movimiento no se aplicará.' : descartando()?.length + ' movimientos no se aplicarán.' }} @if (elegido() !== 'personal') {Lo puedes regresar después.}</p>
+  @if (elegido() === 'personal') {
+    <div class="opciones" role="radiogroup" aria-label="Qué avisar a Personal">
+      <label class="casilla"><input type="radio" name="hecho" [value]="false" [(ngModel)]="hecho" />Regresarlo a Personal para que lo corrijan</label>
+      <label class="casilla"><input type="radio" name="hecho" [value]="true" [(ngModel)]="hecho" />Ya está hecho en nómina: avisar a Personal que se tomó</label>
+    </div>
+  }
   <label class="etiqueta" for="otros-motivo">Por qué</label>
-  <input id="otros-motivo" class="campo" maxlength="200" placeholder="Ya se capturó a mano" [(ngModel)]="motivo" (keydown.enter)="descartar()" />
+  <input id="otros-motivo" class="campo" maxlength="200" [placeholder]="elegido() === 'personal' && !hecho ? 'Qué falta o qué está mal' : 'Ya se capturó a mano'" [(ngModel)]="motivo" (keydown.enter)="descartar()" />
   <ng-container pie>
     <button type="button" class="boton" (click)="descartando.set(null)">Cancelar</button>
     <button type="button" class="boton peligro" [disabled]="motivo.trim().length < 3 || ocupado()" (click)="descartar()">Descartar</button>

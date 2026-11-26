@@ -3,6 +3,7 @@ import { AnalisisModule } from './analisis/analisis.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthModule } from './auth/jwt-auth.module';
 import { CatalogosModule } from './catalogos/catalogos.module';
+import { ConsultaModule } from './consulta/consulta.module';
 import { CompartidoModule } from './common/compartido.module';
 import { CONEXIONES } from './config/conexiones';
 import { DispersionModule } from './dispersion/dispersion.module';
@@ -32,6 +33,7 @@ import { VerificacionModule } from './verificacion/verificacion.module';
     TableroModule,
     AnalisisModule,
     IntegracionesModule,
+    ConsultaModule,
   ],
 })
 export class AppModule {}

@@ -93,6 +93,7 @@ function personal(m: Movimiento, c: Contexto, plan: Plan, falla: (t: string) => 
   const d = m.datos;
   const e = c.empleado;
   if (!m.fecha || !FECHA.test(m.fecha)) return falla('El movimiento no trae fecha.');
+  if (d.documOk === 'N') plan.avisos.push('En Personal su documentación está incompleta.');
 
   if (m.tipo === 'B') {
     const motivo = MOTIVO_BAJA[m.subtipo ?? ''];

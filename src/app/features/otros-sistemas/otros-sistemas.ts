@@ -47,6 +47,7 @@ export class OtrosSistemas {
   protected readonly abierto = signal<MovimientoExterno | null>(null);
   protected readonly descartando = signal<number[] | null>(null);
   protected motivo = '';
+  protected hecho = false;
   protected quitarSeleccion(): void {
     this.marcados.set(new Set());
   }
@@ -166,6 +167,7 @@ export class OtrosSistemas {
         this.abierto.set(null);
         this.marcados.set(new Set());
         if (r.aplicados) this.avisos.exito(`${r.aplicados} ${r.aplicados === 1 ? 'aplicado' : 'aplicados'}. Vuelve a calcular la quincena si ya la calculaste.`);
+        if (r.aviso) this.avisos.error(r.aviso);
         if (r.errores.length) this.avisos.error(r.errores.length === 1 ? `${r.errores[0].nombre}: ${r.errores[0].error}` : `${r.errores.length} no se pudieron aplicar; cada uno dice por qué.`);
         this.recargar();
       },
@@ -179,6 +181,7 @@ export class OtrosSistemas {
 
   protected pedirDescarte(ids: number[]): void {
     this.motivo = '';
+    this.hecho = false;
     this.abierto.set(null);
     this.descartando.set(ids);
   }
@@ -187,17 +190,18 @@ export class OtrosSistemas {
     const ids = this.descartando();
     if (!ids || this.motivo.trim().length < 3) return;
     this.ocupado.set(true);
-    this.api.descartarExternos(this.elegido(), ids, this.motivo.trim()).subscribe({
+    this.api.descartarExternos(this.elegido(), ids, this.motivo.trim(), this.hecho).subscribe({
       next: () => {
         this.ocupado.set(false);
         this.descartando.set(null);
         this.marcados.set(new Set());
-        this.avisos.exito('Descartado. Si fue un error, lo regresas desde Descartados.');
+        this.avisos.exito(this.elegido() !== 'personal' ? 'Descartado. Si fue un error, lo regresas desde Descartados.' : this.hecho ? 'Listo. Personal ya sabe que se tomó.' : 'Regresado a Personal con tu motivo.');
         this.recargar();
       },
       error: (e) => {
         this.ocupado.set(false);
         this.avisos.error(mensajeDeError(e));
+        this.recargar();
       },
     });
   }

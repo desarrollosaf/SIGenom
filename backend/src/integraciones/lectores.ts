@@ -1,4 +1,5 @@
 import type { Sistema } from '../database/models/externos.models';
+import { huella } from './personal.api';
 
 /** Un movimiento ya con la forma de SIGenom; `datos` guarda el renglón original completo. */
 export interface MovimientoLeido {
@@ -24,8 +25,8 @@ export interface Lector {
   descripcion: string;
   /** Nombres de los tipos, en el orden en que se muestran. */
   tipos: Record<string, string>;
-  /** Solo SELECT. Recibe :desde, el último id que ya se trajo. */
-  sql: string;
+  /** Solo SELECT. Recibe :desde, el último id que ya se trajo. Null: no se lee de una base sino de su API. */
+  sql: string | null;
   leer: (r: Renglon) => MovimientoLeido;
 }
 
@@ -44,44 +45,36 @@ const fecha = (v: unknown): string | null => {
   return m ? m[0] : null;
 };
 const rfc = (v: unknown) => texto(v)?.replace(/[^A-Za-z0-9Ññ&]/g, '').toUpperCase().slice(0, 13) ?? null;
-const objeto = (v: unknown): Renglon => {
-  if (typeof v === 'string') {
-    try {
-      const o: unknown = JSON.parse(v);
-      return o && typeof o === 'object' ? (o as Renglon) : {};
-    } catch {
-      return {};
-    }
-  }
-  return v && typeof v === 'object' ? (v as Renglon) : {};
-};
 
-/** SIModpersonal: lo que se transfirió a nómina, por lote. No se vuelve a editar allá. */
+/** La adscripción llega como "11040 - NOMBRE DEL DEPARTAMENTO". */
+const adscripcion = (d: Renglon): number | null => entero(d.adsAct) ?? entero(/^(\d+) - /.exec(texto(d.departamento) ?? '')?.[1]);
+
+/** SIModpersonal: los movimientos que nómina todavía no confirma. Se leen de su API (personal.api.ts). */
 const PERSONAL: Lector = {
   clave: 'personal',
   nombre: 'Personal',
   descripcion: 'Altas, bajas, promociones, transferencias y licencias',
   tipos: { A: 'Alta', B: 'Baja', P: 'Promoción', T: 'Transferencia', L: 'Licencia' },
-  sql: `SELECT id, tipo_mov, folio, lote_id, anio, no_qna, rfc, curp, nombre, subtipo, fecha_baja::text fecha_baja,
-               fecha_mov::text fecha_mov, observaciones, datos
-        FROM movimientos_historico WHERE id > :desde ORDER BY id LIMIT 5000`,
-  leer: (r) => {
-    const d = objeto(r.datos);
-    const base = rfc(r.rfc) ?? '';
-    const homoclave = texto(d.homoclave, 3) ?? '';
+  sql: null,
+  leer: (d) => {
+    const base = rfc(d.rfc) ?? '';
+    const tipo = texto(d.tipoMov, 1) ?? '?';
+    const folio = texto(d.folio, 6) ?? '';
+    const movimiento = fecha(d.fecMov);
     return {
-      externoId: String(r.id),
-      lote: texto(r.lote_id, 20),
-      tipo: texto(r.tipo_mov, 1) ?? '?',
-      subtipo: texto(r.subtipo, 10)?.toUpperCase() ?? null,
-      curp: texto(r.curp, 18)?.toUpperCase() ?? null,
-      rfc: (base.length === 10 ? base + homoclave : base) || null,
-      nombre: texto(r.nombre, 170) ?? 'Sin nombre',
+      externoId: String(d.id),
+      lote: folio || null,
+      tipo,
+      subtipo: texto(d.subtipoMov, 10)?.toUpperCase() ?? null,
+      curp: texto(d.curp, 18)?.toUpperCase() ?? null,
+      rfc: (base.length === 10 ? base + (texto(d.homoclave, 3) ?? '') : base) || null,
+      nombre: texto(d.nombre, 170) ?? 'Sin nombre',
       tipoNomina: texto(d.tipoNomina, 1)?.toUpperCase() ?? null,
-      anio: entero(r.anio),
-      quincena: entero(r.no_qna),
-      fecha: fecha(r.tipo_mov === 'B' ? (r.fecha_baja ?? r.fecha_mov) : (d.fAlta && r.tipo_mov === 'A' ? d.fAlta : r.fecha_mov)),
-      datos: { ...d, folio: r.folio, observaciones: r.observaciones ?? d.obs ?? null },
+      // El folio es NNNNAA: sus dos últimos dígitos son el año.
+      anio: /^\d{6}$/.test(folio) ? 2000 + Number(folio.slice(4)) : null,
+      quincena: entero(d.noQna),
+      fecha: tipo === 'B' ? (fecha(d.fTerm) ?? movimiento) : tipo === 'A' ? (fecha(d.fAlta) ?? movimiento) : movimiento,
+      datos: { ...d, adsAct: adscripcion(d), huella: huella(d) },
     };
   },
 };

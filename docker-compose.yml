@@ -35,7 +35,9 @@ services:
     container_name: sigenom-backend
     working_dir: /app
     ports:
-      - "127.0.0.1:3098:3080"
+      # Abierto a la red local: la consulta /consulta/capacidad-descuento la usan otros sistemas
+      # (docs/api-capacidad-descuento.md). El resto de la API sigue pidiendo sesión.
+      - "3098:3080"
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules

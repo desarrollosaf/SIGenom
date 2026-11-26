@@ -1,18 +1,33 @@
 # Otros sistemas
 
-SIGenom lee movimientos de otros sistemas a una bandeja (**Otros sistemas** en el menú). Ahí se revisan y se
-aplican o descartan. La lectura es de solo lectura: a los otros sistemas no se les escribe nada.
+SIGenom trae movimientos de otros sistemas a una bandeja (**Otros sistemas** en el menú). Ahí se revisan y se
+aplican o descartan. Personal se conecta por la API de SIModpersonal; Checadores y Préstamos se leen de su base
+PostgreSQL, a la que no se le escribe nada.
 
 La conexión se captura en `backend/.env` (`EXT_PERSONAL_*`, `EXT_CHECADOR_*`, `EXT_PRESTAMOS_*`; plantilla en
-`.env.example`) y se toma al levantar de nuevo el contenedor: `docker compose up -d`. Los tres se leen de PostgreSQL.
-Conviene un usuario que solo tenga `SELECT` sobre la tabla de control.
+`.env.example`) y se toma al levantar de nuevo el contenedor: `docker compose up -d`.
+En Checadores y Préstamos conviene un usuario que solo tenga `SELECT` sobre la tabla de control.
 
-Reglas para las tres tablas: `id` entero que crece (no se reutiliza) y los renglones no se modifican después de
+Reglas para las tablas de Checadores y Préstamos: `id` entero que crece (no se reutiliza) y los renglones no se modifican después de
 insertarse; una corrección es un renglón nuevo. La persona se busca por CURP y, si no está, por RFC.
 
 ## 1. Personal (SIModpersonal)
 
-Ya existe: `movimientos_historico`, la copia de lo que se transfiere a nómina por lote.
+Usa `/nomina/movimientos` de SIModpersonal, con una llave compartida:
+
+| Dónde | Variable | Valor |
+|---|---|---|
+| `SIModpersonal/backend/.env` | `NOMINA_API_KEY` | la llave (`openssl rand -hex 32`) |
+| `SIGenom/backend/.env` | `EXT_PERSONAL_LLAVE` | la misma llave |
+| `SIGenom/backend/.env` | `EXT_PERSONAL_URL` | en desarrollo, `http://host.docker.internal:3065` |
+
+- **Traer** deja la bandeja igual a lo pendiente en Personal: agrega lo nuevo, actualiza lo corregido y retira lo
+  cancelado.
+- **Aplicar** vuelve a leer, aplica y confirma el folio. Al confirmar, SIModpersonal lo pasa a enviado, lo copia a su
+  histórico y registra altas y transferencias en SAF. Si no responde, se confirma en la siguiente lectura.
+- **Descartar** lo regresa con el motivo para que lo corrijan, o lo confirma si ya estaba hecho en nómina.
+
+La adscripción es el número con que empieza el departamento (`11040 - …`).
 
 | Tipo | Qué hace en SIGenom |
 |---|---|

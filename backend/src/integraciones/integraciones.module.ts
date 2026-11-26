@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Module, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsInt, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,6 +14,7 @@ class IdsDto {
 
 class DescartarDto extends IdsDto {
   @IsString() @MinLength(3) @MaxLength(200) motivo: string;
+  @IsOptional() @IsBoolean() hecho?: boolean;
 }
 
 @Controller('otros-sistemas')
@@ -49,7 +50,7 @@ export class IntegracionesController {
   @Roles(...PUEDEN_OPERAR)
   @HttpCode(HttpStatus.OK)
   descartar(@Param('sistema') sistema: string, @Body() dto: DescartarDto, @Usuario() u: UsuarioActual) {
-    return this.integraciones.descartar(sistema, dto.ids, dto.motivo.trim(), u.usuario);
+    return this.integraciones.descartar(sistema, dto.ids, dto.motivo.trim(), u.usuario, dto.hecho);
   }
 
   @Post(':sistema/:id/restaurar')

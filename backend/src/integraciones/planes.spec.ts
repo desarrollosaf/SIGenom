@@ -89,10 +89,14 @@ describe('préstamos', () => {
 
 describe('lectores', () => {
   it('junta RFC y homoclave y toma la fecha que corresponde', () => {
-    const l = LECTORES[0].leer({ id: 5, tipo_mov: 'A', subtipo: 'nue', rfc: 'XAXX010101', datos: '{"homoclave":"AB1","fAlta":"2025-04-01","tipoNomina":"p"}', anio: 2025, no_qna: 7, nombre: 'X', fecha_mov: '2025-03-28' });
-    expect(l).toMatchObject({ externoId: '5', rfc: 'XAXX010101AB1', fecha: '2025-04-01', tipoNomina: 'P', subtipo: 'NUE' });
+    const r = { id: 5, folio: '000125', tipoMov: 'A', subtipoMov: 'nue', rfc: 'XAXX010101', homoclave: 'AB1', fecMov: '2025-03-28', fAlta: '2025-04-01', tipoNomina: 'p', noQna: 7, nombre: 'X', adsAct: null, departamento: '11040 - UNO', estatusMotivo: null, updatedAt: '1' };
+    const l = LECTORES[0].leer(r);
+    expect(l).toMatchObject({ externoId: '5', lote: '000125', anio: 2025, quincena: 7, rfc: 'XAXX010101AB1', fecha: '2025-04-01', tipoNomina: 'P', subtipo: 'NUE', datos: { adsAct: 11040, folio: '000125' } });
+    // Rechazarlo no es corregirlo; cambiarle un dato sí.
+    expect(LECTORES[0].leer({ ...r, estatusMotivo: 'falta', updatedAt: '2' }).datos.huella).toBe(l.datos.huella);
+    expect(LECTORES[0].leer({ ...r, rango: 3 }).datos.huella).not.toBe(l.datos.huella);
   });
   it('solo lee', () => {
-    for (const l of LECTORES) expect(l.sql.trim().toUpperCase().startsWith('SELECT')).toBe(true);
+    for (const l of LECTORES) if (l.sql) expect(l.sql.trim().toUpperCase().startsWith('SELECT')).toBe(true);
   });
 });

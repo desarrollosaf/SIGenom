@@ -363,11 +363,11 @@ export class ApiService {
   }
 
   aplicarExternos(sistema: string, ids: number[]) {
-    return this.http.post<{ aplicados: number; errores: { id: number; nombre: string; error: string }[] }>(`${this.url}/otros-sistemas/${sistema}/aplicar`, { ids });
+    return this.http.post<{ aplicados: number; errores: { id: number; nombre: string; error: string }[]; aviso: string | null }>(`${this.url}/otros-sistemas/${sistema}/aplicar`, { ids });
   }
 
-  descartarExternos(sistema: string, ids: number[], motivo: string) {
-    return this.http.post<{ descartados: number }>(`${this.url}/otros-sistemas/${sistema}/descartar`, { ids, motivo });
+  descartarExternos(sistema: string, ids: number[], motivo: string, hecho: boolean) {
+    return this.http.post<{ descartados: number }>(`${this.url}/otros-sistemas/${sistema}/descartar`, { ids, motivo, hecho });
   }
 
   restaurarExterno(sistema: string, id: number): Observable<void> {
