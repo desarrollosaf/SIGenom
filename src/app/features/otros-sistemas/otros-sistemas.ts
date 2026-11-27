@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, mensajeDeError } from '../../core/services/api.service';
@@ -7,6 +7,7 @@ import { AvisosService } from '../../core/services/avisos.service';
 import { ContextoService } from '../../core/services/contexto.service';
 import type { EstadoExterno, MovimientoExterno, SistemaExterno } from '../../core/services/modelos';
 import { Cajon } from '../../shared/cajon/cajon';
+import { CompletarMovimiento } from './completar-movimiento';
 import { FORMATO } from '../../shared/formato';
 import { Icono, type NombreIcono } from '../../shared/icono/icono';
 
@@ -19,7 +20,7 @@ const POR_PAGINA = 100;
  */
 @Component({
   selector: 'app-otros-sistemas',
-  imports: [FormsModule, RouterLink, Icono, Cajon, ...FORMATO],
+  imports: [FormsModule, RouterLink, Icono, Cajon, CompletarMovimiento, ...FORMATO],
   templateUrl: './otros-sistemas.html',
   styleUrl: './otros-sistemas.scss',
 })
@@ -46,6 +47,7 @@ export class OtrosSistemas {
   protected readonly marcados = signal<Set<number>>(new Set());
   protected readonly abierto = signal<MovimientoExterno | null>(null);
   protected readonly descartando = signal<number[] | null>(null);
+  private readonly completar = viewChild<CompletarMovimiento>('completar');
   protected motivo = '';
   protected hecho = false;
   protected quitarSeleccion(): void {
@@ -213,6 +215,25 @@ export class OtrosSistemas {
         this.recargar();
       },
       error: (e) => this.avisos.error(mensajeDeError(e)),
+    });
+  }
+
+  /** Lo capturado en el cajón (cuenta, claves) se guarda antes de aplicar, para no perderlo. */
+  protected async aplicarDesdeCajon(id: number): Promise<void> {
+    const c = this.completar();
+    if (c && !(await c.guardarPendiente())) return;
+    await this.aplicar([id]);
+  }
+
+  /** Tras guardar ajustes, el cajón sigue abierto con el movimiento ya actualizado. */
+  protected alCompletar(id: number): void {
+    const filtro = { estado: this.estado(), tipo: this.tipo(), q: this.q().trim(), desde: this.desde() };
+    this.api.movimientosExternos(this.elegido(), filtro).subscribe({
+      next: (r) => {
+        this.lista.set(r.movimientos);
+        const m = r.movimientos.find((x) => x.id === id);
+        if (m && this.abierto()?.id === id) this.abierto.set({ ...m });
+      },
     });
   }
 

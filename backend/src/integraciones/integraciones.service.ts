@@ -3,9 +3,11 @@ import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes, Sequelize } from 'sequelize';
 import { BitacoraService } from '../common/bitacora.service';
 import { contiene, patron } from '../common/busqueda';
+import { EntradaService } from '../common/entrada.service';
 import { TablasService } from '../common/tablas.service';
+import { calcularRecibo, diasPagables } from '../motor/motor';
 import { Adscripcion, Concepto, Puesto } from '../database/models/catalogos.models';
-import { EstadoExterno, LecturaExterna, MovimientoExterno, Sistema } from '../database/models/externos.models';
+import { AjustesExterno, EstadoExterno, LecturaExterna, MovimientoExterno, Sistema } from '../database/models/externos.models';
 import { Captura } from '../database/models/nomina.models';
 import { DescuentoPlazo, Empleado, EmpleadoConcepto } from '../database/models/personal.models';
 import { EmpleadosService } from '../empleados/empleados.service';
@@ -33,6 +35,7 @@ export class IntegracionesService {
   constructor(
     private readonly bitacora: BitacoraService,
     private readonly tablas: TablasService,
+    private readonly entrada: EntradaService,
     private readonly periodos: PeriodosService,
     private readonly capturas: CapturasService,
     private readonly empleadosSrv: EmpleadosService,
@@ -209,6 +212,8 @@ export class IntegracionesService {
         mensaje: m.mensaje,
         empleadoId: m.empleadoId ?? planes[i]?.empleadoId ?? null,
         efecto: planes[i]?.efecto ?? [],
+        ajustes: m.ajustes,
+        cuentaPersonal: lector.clave === 'personal' ? (m.datos.ctaBan ?? null) : null,
         avisos: planes[i]?.avisos ?? [],
         problema: planes[i]?.problema ?? null,
         atendidoPor: m.atendidoPor,
@@ -278,6 +283,84 @@ export class IntegracionesService {
   }
 
   /** @param hecho solo Personal: ya está hecho en nómina, así que se confirma allá en vez de regresarlo para corregir. */
+  /** Cuenta y claves extra, antes de aplicar. No cambia lo que mandó el otro sistema. */
+  async ajustar(sistema: string, id: number, ajustes: AjustesExterno, usuario: string) {
+    const lector = this.lector(sistema);
+    const m = await this.externos.findOne({ where: { id, sistema: lector.clave } });
+    if (!m) throw new NotFoundException('Ese movimiento no existe.');
+    if (m.estado !== 'pendiente') throw new ConflictException('Solo se puede cambiar mientras está por aplicar.');
+    const antes = m.ajustes;
+    await this.externos.update({ ajustes }, { where: { id, estado: 'pendiente' } });
+    await this.bitacora.registrar({ usuario, entidad: `externo:${lector.clave}`, entidadId: id, accion: 'ajusta_movimiento', antes, despues: ajustes as object });
+    return this.recibo(sistema, id);
+  }
+
+  /**
+   * Cómo quedaría su recibo de la quincena abierta si se aplica: con el mismo motor de la nómina,
+   * sobre una copia en memoria del empleado con los cambios del movimiento. No guarda nada.
+   */
+  async recibo(sistema: string, id: number) {
+    const lector = this.lector(sistema);
+    const m = await this.externos.findOne({ where: { id, sistema: lector.clave } });
+    if (!m) throw new NotFoundException('Ese movimiento no existe.');
+    const [plan] = await this.planes([m]);
+    if (plan.problema) return { problema: plan.problema };
+    const actual = plan.empleadoId
+      ? await this.empleados.findByPk(plan.empleadoId, {
+          include: [EmpleadoConcepto, { model: DescuentoPlazo, where: { activo: true }, required: false }],
+        })
+      : null;
+    const nomina = actual?.tipoNomina ?? m.tipoNomina;
+    const vista = nomina ? await this.periodos.actual(nomina) : null;
+    if (!vista || vista.estado === 'cerrado') return { problema: 'No hay quincena abierta en esa nómina.' };
+    const periodo = await this.periodos.abierto(vista.id);
+
+    const emp = {
+      id: actual?.id ?? 0, nivel: actual?.nivel ?? 0, rango: actual?.rango ?? 0, sci: actual?.sci ?? false,
+      fechaAlta: actual?.fechaAlta ?? periodo.fechaInicio, fechaBaja: actual?.fechaBaja ?? null,
+      conceptosFijos: (actual?.conceptosFijos ?? []).map((f) => ({ conceptoId: f.conceptoId, importe: f.importe, gravaIsr: f.gravaIsr, timbra: f.timbra })),
+      descuentosPlazo: actual?.descuentosPlazo ?? [],
+    };
+    const capturas: { conceptoId: number; importe: number }[] = [];
+    const permisos: { inicio: string; fin: string | null }[] = [];
+    for (const a of plan.acciones) {
+      if (a.hacer === 'alta') Object.assign(emp, { nivel: a.datos.nivel, rango: a.datos.rango, fechaAlta: a.datos.fechaAlta, fechaBaja: null });
+      if (a.hacer === 'reingreso') Object.assign(emp, { fechaAlta: a.fecha, fechaBaja: null });
+      if (a.hacer === 'baja') emp.fechaBaja = a.fecha;
+      if (a.hacer === 'permiso') permisos.push({ inicio: a.inicio, fin: a.fin });
+      if (a.hacer === 'cambio') Object.assign(emp, { ...(a.campos.nivel ? { nivel: a.campos.nivel } : {}), ...(a.campos.rango ? { rango: a.campos.rango } : {}) });
+      if (a.hacer === 'fija') {
+        emp.conceptosFijos = emp.conceptosFijos.filter((f) => f.conceptoId !== a.conceptoId);
+        emp.conceptosFijos.push({ conceptoId: a.conceptoId, importe: a.importe, gravaIsr: null, timbra: null });
+      }
+      if (a.hacer === 'captura') capturas.push({ conceptoId: a.conceptoId, importe: a.importe });
+    }
+    const ctx = await this.entrada.contexto(periodo, 'quincenal');
+    const [{ entrada }] = await this.entrada.entradas(ctx, [emp as unknown as Empleado]);
+    entrada.capturas.push(...capturas.map((c) => ({ ...c, gravaIsr: null, timbra: null })));
+    if (permisos.length) {
+      const sinPermiso = diasPagables({ inicio: periodo.fechaInicio, fin: periodo.fechaFin }, emp, permisos, ctx.tablas.parametros.diasQuincena);
+      entrada.dias = Math.min(entrada.dias, sinPermiso);
+    }
+    const r = calcularRecibo(entrada, ctx.tablas);
+    // Lo que se capturó en Personal viene por mes: se devuelve para compararlo con la quincena.
+    const enPersonal = Array.isArray(m.datos.percepciones)
+      ? Math.round((m.datos.percepciones as { importe?: unknown }[]).reduce((s, p) => s + (Number(p.importe) || 0) * 100, 0)) / 100
+      : null;
+    return {
+      problema: null,
+      percepcionesPersonalMes: lector.clave === 'personal' ? enPersonal : null,
+      quincena: vista.nombre,
+      nivel: emp.nivel,
+      rango: emp.rango,
+      dias: r.dias,
+      lineas: r.lineas.filter((l) => l.importe !== 0).map((l) => ({ clave: l.clave, descripcion: l.descripcion, naturaleza: l.naturaleza, importe: l.importe })),
+      totalPercepciones: r.totalPercepciones,
+      totalDeducciones: r.totalDeducciones,
+      neto: r.neto,
+    };
+  }
+
   async descartar(sistema: string, ids: number[], motivo: string, usuario: string, hecho = false) {
     const lector = this.lector(sistema);
     if (!lector.sql) return this.descartarPersonal(lector, ids, motivo, usuario, hecho);

@@ -1,4 +1,4 @@
-import type { MovimientoExterno } from '../database/models/externos.models';
+import type { AjustesExterno, MovimientoExterno } from '../database/models/externos.models';
 
 /** Lo que un movimiento va a cambiar, en palabras, y lo que impide aplicarlo. */
 export interface Plan {
@@ -22,7 +22,7 @@ export type Accion =
 
 export interface AltaExterna {
   curp: string; rfc: string; apellidoPaterno: string; apellidoMaterno?: string; nombres: string; tipoNomina: string; adscripcionId: number;
-  puestoClave: string; nivel: number; rango: number; fechaAlta: string; cuentaBancaria?: string; pagoCheque?: boolean;
+  puestoClave: string; nivel: number; rango: number; fechaAlta: string; banco?: string; cuentaBancaria?: string; pagoCheque?: boolean;
 }
 
 export interface EmpleadoPlan {
@@ -63,7 +63,9 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'o
 const dia = (f: string) => `${Number(f.slice(8))} ${MESES[Number(f.slice(5, 7)) - 1]} ${f.slice(0, 4)}`;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
-type Movimiento = Pick<MovimientoExterno, 'sistema' | 'externoId' | 'tipo' | 'subtipo' | 'curp' | 'rfc' | 'nombre' | 'tipoNomina' | 'anio' | 'quincena' | 'fecha' | 'datos'>;
+type Movimiento = Pick<MovimientoExterno, 'sistema' | 'externoId' | 'tipo' | 'subtipo' | 'curp' | 'rfc' | 'nombre' | 'tipoNomina' | 'anio' | 'quincena' | 'fecha' | 'datos'> & {
+  ajustes?: AjustesExterno | null;
+};
 
 export function planear(m: Movimiento, c: Contexto): Plan {
   const plan: Plan = { empleadoId: c.empleado?.id ?? null, efecto: [], avisos: [], problema: null, acciones: [] };
@@ -144,18 +146,23 @@ function personal(m: Movimiento, c: Contexto, plan: Plan, falla: (t: string) => 
     if (!Number.isInteger(ads) || !c.adscripciones.has(ads)) return falla(`La adscripción ${cadena(d.adsAct) || '(vacía)'} no está en Catálogos.`);
     if (!m.curp || !m.rfc || m.rfc.length < 12) return falla('Falta la CURP o el RFC con homoclave.');
     if (!cadena(d.primerApellido) || !cadena(d.nombres)) return falla('Faltan el apellido o el nombre por separado.');
-    const cuenta = cadena(d.ctaBan).replace(/\D/g, '');
+    // La cuenta que capture nómina aquí manda sobre la que trajo Personal.
+    const aj = m.ajustes ?? {};
+    const cuenta = cadena(aj.cuentaBancaria !== undefined ? aj.cuentaBancaria : d.ctaBan).replace(/\D/g, '');
     const cuentaValida = /^(\d{10}|\d{11}|\d{16}|\d{18})$/.test(cuenta);
-    if (!cuentaValida) plan.avisos.push('Sin cuenta bancaria válida: queda pendiente en su ficha.');
+    const cheque = !!aj.pagoCheque;
+    const banco = cadena(aj.banco).slice(0, 20) || 'CITIBANAMEX';
+    if (!cuentaValida && !cheque) plan.avisos.push('Sin cuenta bancaria: captúrala aquí antes de aplicar, o no se le podrá depositar.');
     plan.efecto.push(`Alta el ${dia(m.fecha)} · puesto ${puesto}, nivel ${nivel}, rango ${rango} · adscripción ${ads}`);
     plan.acciones.push({
       hacer: 'alta',
       datos: {
         curp: m.curp, rfc: m.rfc, apellidoPaterno: cadena(d.primerApellido), apellidoMaterno: cadena(d.segundoApellido) || undefined,
         nombres: cadena(d.nombres), tipoNomina: m.tipoNomina!, adscripcionId: ads, puestoClave: puesto, nivel, rango, fechaAlta: m.fecha,
-        ...(cuentaValida ? { cuentaBancaria: cuenta } : {}),
+        ...(cheque ? { pagoCheque: true } : cuentaValida ? { cuentaBancaria: cuenta, banco } : {}),
       },
     });
+    plan.efecto.push(cheque ? 'Se le paga con cheque' : cuentaValida ? `Depósito a ${banco} ···${cuenta.slice(-4)}` : 'Sin forma de pago');
   } else if (m.tipo === 'A') {
     if (!e) return falla('No se encontró a la persona en SIGenom por CURP ni RFC.');
     if (e.estado === 'activo') return falla('Ya está activa en SIGenom.');
@@ -191,7 +198,22 @@ function personal(m: Movimiento, c: Contexto, plan: Plan, falla: (t: string) => 
     plan.efecto.push(`${num3(clave)} ${concepto.descripcion}: ${antes === undefined ? '' : `${pesos.format(antes)} → `}${pesos.format(importe)} por quincena`);
     plan.acciones.push({ hacer: 'fija', conceptoId: concepto.id, importe });
   }
-  if (plan.acciones.some((a) => a.hacer === 'fija')) plan.avisos.push('Los importes venían por mes y se pasaron a quincena.');
+  if (plan.acciones.some((a) => a.hacer === 'fija')) plan.avisos.push('Los importes de Personal venían por mes y se pasaron a quincena.');
+
+  // Claves que nómina agrega aquí antes de aplicar (ya vienen por quincena).
+  for (const k of m.ajustes?.claves ?? []) {
+    const concepto = c.conceptos.get(k.clave);
+    if (!concepto || !concepto.activo) return falla(`La clave ${num3(k.clave)} que agregaste no está en el catálogo de esa nómina.`);
+    if (concepto.calculado) return falla(`La clave ${num3(k.clave)} la calcula el sistema; quítala.`);
+    const texto = `${concepto.naturaleza === 'D' ? 'Descuenta' : 'Paga'} ${pesos.format(k.importe)} en ${num3(k.clave)} ${concepto.descripcion}`;
+    if (k.cada === 'esta') {
+      plan.efecto.push(`${texto}, solo esta quincena`);
+      plan.acciones.push({ hacer: 'captura', conceptoId: concepto.id, importe: k.importe, referencia: `Personal folio ${cadena(d.folio) || m.externoId}`.slice(0, 80) });
+    } else {
+      plan.efecto.push(`${texto} cada quincena`);
+      plan.acciones.push({ hacer: 'fija', conceptoId: concepto.id, importe: k.importe });
+    }
+  }
   if (c.periodo && m.fecha < c.periodo.fechaInicio && plan.acciones.length) plan.avisos.push(`Vale desde el ${dia(m.fecha)}: revisa si hay que pagar retroactivo.`);
   if (!plan.acciones.length) plan.efecto.push('SIGenom ya está así');
   return plan;

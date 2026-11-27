@@ -1,0 +1,35 @@
+{
+  "info": {
+    "name": "SIGenom - Capacidad de descuento",
+    "description": "Antes de usarla: en la pestaña Variables de la colección, pon la llave (CONSULTA_API_LLAVE de backend/.env) en Current value. No la guardes en Initial value: esa se comparte al exportar.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "servidor", "value": "http://192.168.108.250:3098" },
+    { "key": "llave", "value": "" },
+    { "key": "curp", "value": "XEXX010101HNEXXXA4" }
+  ],
+  "item": [
+    {
+      "name": "Capacidad de descuento",
+      "request": {
+        "method": "POST",
+        "auth": { "type": "noauth" },
+        "header": [
+          { "key": "x-api-key", "value": "{{llave}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"curp\": \"{{curp}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{servidor}}/consulta/capacidad-descuento",
+          "host": ["{{servidor}}"],
+          "path": ["consulta", "capacidad-descuento"]
+        }
+      }
+    }
+  ]
+}

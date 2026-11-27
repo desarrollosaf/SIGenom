@@ -140,6 +140,9 @@
       <ul class="cambios">@for (e of m.efecto; track e) {<li>{{ e }}</li>}</ul>
     }
     @for (a of m.avisos; track a) {<p class="nota ambar aviso-mov">{{ a }}</p>}
+    @if (elegido() === 'personal' && m.estado === 'pendiente') {
+      <app-completar-movimiento #completar [movimiento]="m" [sistema]="elegido()" [puede]="puede" (cambiado)="alCompletar(m.id)" />
+    }
     <dl class="datos">
       <div><dt>CURP</dt><dd class="mono">{{ m.curp ?? '—' }}</dd></div>
       <div><dt>Fecha</dt><dd>{{ m.fecha | fecha }}</dd></div>
@@ -155,7 +158,7 @@
     @if (abierto(); as m) {
       @if (puede && m.estado === 'pendiente') {
         <button type="button" class="boton" style="margin-right: auto" (click)="pedirDescarte([m.id])">Descartar</button>
-        <button type="button" class="boton primario" [disabled]="!!m.problema || ocupado()" (click)="aplicar([m.id])">Aplicar</button>
+        <button type="button" class="boton primario" [disabled]="!!m.problema || ocupado()" (click)="aplicarDesdeCajon(m.id)">Aplicar</button>
       } @else if (puede && m.estado === 'descartado') {
         <button type="button" class="boton" (click)="restaurar(m)">Regresar a Por aplicar</button>
       } @else {<button type="button" class="boton" (click)="abierto.set(null)">Cerrar</button>}

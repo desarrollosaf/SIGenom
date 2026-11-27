@@ -87,6 +87,25 @@ describe('préstamos', () => {
   });
 });
 
+describe('ajustes de nómina antes de aplicar', () => {
+  const datos = { puestoClave: 'A011120', rango: 3, adsAct: 12001, primerApellido: 'UNO', nombres: 'TRES', ctaBan: '' };
+  const alta = (ajustes: object) => ({ ...mov('personal', 'A', datos, { subtipo: 'NUE', rfc: 'XAXX010101000' }), ajustes });
+  it('la cuenta capturada aquí entra al alta y ya no avisa', () => {
+    const p = planear(alta({ cuentaBancaria: '012345678901234567', banco: 'BBVA' }), ctx({ empleado: null }));
+    expect(p.acciones[0]).toMatchObject({ hacer: 'alta', datos: { cuentaBancaria: '012345678901234567', banco: 'BBVA' } });
+    expect(p.avisos.join()).not.toContain('cuenta');
+  });
+  it('claves extra: fijas cada quincena o solo esta, y rechaza las que calcula el sistema', () => {
+    const p = planear(alta({ pagoCheque: true, claves: [{ clave: 17, importe: 800, cada: 'quincena' }, { clave: 559, importe: 120.5, cada: 'esta' }] }), ctx({ empleado: null }));
+    expect(p.problema).toBeNull();
+    expect(p.acciones.slice(1)).toEqual([
+      { hacer: 'fija', conceptoId: 17, importe: 800 },
+      { hacer: 'captura', conceptoId: 59, importe: 120.5, referencia: 'Personal folio 9' },
+    ]);
+    expect(planear(alta({ claves: [{ clave: 1, importe: 5, cada: 'esta' }] }), ctx({ empleado: null })).problema).toContain('calcula el sistema');
+  });
+});
+
 describe('lectores', () => {
   it('junta RFC y homoclave y toma la fecha que corresponde', () => {
     const r = { id: 5, folio: '000125', tipoMov: 'A', subtipoMov: 'nue', rfc: 'XAXX010101', homoclave: 'AB1', fecMov: '2025-03-28', fAlta: '2025-04-01', tipoNomina: 'p', noQna: 7, nombre: 'X', adsAct: null, departamento: '11040 - UNO', estatusMotivo: null, updatedAt: '1' };

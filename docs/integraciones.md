@@ -29,6 +29,11 @@ Usa `/nomina/movimientos` de SIModpersonal, con una llave compartida:
 
 La adscripción es el número con que empieza el departamento (`11040 - …`).
 
+Antes de aplicar, en el detalle de cada movimiento de Personal se ve **cuánto le saldría** en la quincena abierta
+(mismo cálculo de la nómina, sin guardar nada) y nómina puede completar la **cuenta bancaria** de un alta y agregar
+**percepciones o deducciones** fijas o solo de esa quincena. Eso se guarda aparte (`movimientos_externos.ajustes`):
+si Personal corrige el movimiento, no se pierde.
+
 | Tipo | Qué hace en SIGenom |
 |---|---|
 | `A` NUE | Alta del empleado con su puesto, rango, adscripción y claves fijas |

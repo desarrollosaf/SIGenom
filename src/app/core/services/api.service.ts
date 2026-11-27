@@ -7,6 +7,7 @@ import type {
   AjusteQuincena,
   Calculo,
   Captura,
+  AjustesExterno,
   DatosMasiva,
   DefinicionCatalogo,
   DefinicionReporte,
@@ -34,6 +35,7 @@ import type {
   Tablero,
   TipoCalculo,
   UsuarioSistema,
+  ReciboExterno,
   VistaMasiva,
   VistaRetroactivo,
 } from './modelos';
@@ -368,6 +370,14 @@ export class ApiService {
 
   descartarExternos(sistema: string, ids: number[], motivo: string, hecho: boolean) {
     return this.http.post<{ descartados: number }>(`${this.url}/otros-sistemas/${sistema}/descartar`, { ids, motivo, hecho });
+  }
+
+  reciboExterno(sistema: string, id: number): Observable<ReciboExterno> {
+    return this.http.get<ReciboExterno>(`${this.url}/otros-sistemas/${sistema}/${id}/recibo`);
+  }
+
+  ajustarExterno(sistema: string, id: number, ajustes: AjustesExterno): Observable<ReciboExterno> {
+    return this.http.put<ReciboExterno>(`${this.url}/otros-sistemas/${sistema}/${id}/ajustes`, ajustes);
   }
 
   restaurarExterno(sistema: string, id: number): Observable<void> {

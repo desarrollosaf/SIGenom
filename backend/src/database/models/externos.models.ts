@@ -1,6 +1,15 @@
 import { Column, DataType, Model, Table } from 'sequelize-typescript';
 
 export type Sistema = 'personal' | 'checador' | 'prestamos';
+/** Lo que nómina completa antes de aplicar: forma de pago y claves que se agregan. */
+export interface AjustesExterno {
+  banco?: string | null;
+  cuentaBancaria?: string | null;
+  pagoCheque?: boolean;
+  /** `cada`: fija en la ficha (cada quincena) o captura solo en la quincena abierta. */
+  claves?: { clave: number; importe: number; cada: 'quincena' | 'esta' }[];
+}
+
 export type EstadoExterno = 'pendiente' | 'aplicando' | 'aplicado' | 'descartado';
 
 /** Un movimiento que mandó otro sistema, tal como llegó, y qué se hizo con él. */
@@ -47,6 +56,9 @@ export class MovimientoExterno extends Model {
 
   @Column(DataType.JSONB)
   declare datos: Record<string, unknown>;
+
+  @Column(DataType.JSONB)
+  declare ajustes: AjustesExterno | null;
 
   @Column(DataType.STRING(12))
   declare estado: EstadoExterno;

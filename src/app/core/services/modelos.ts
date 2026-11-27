@@ -507,6 +507,27 @@ export interface SistemaExterno {
   ultima: { fecha: string; usuario: string; nuevos: number; error: string | null } | null;
 }
 
+export interface AjustesExterno {
+  banco?: string | null;
+  cuentaBancaria?: string | null;
+  pagoCheque?: boolean;
+  claves?: { clave: number; importe: number; cada: 'quincena' | 'esta' }[];
+}
+
+export interface ReciboExterno {
+  problema: string | null;
+  quincena?: string;
+  nivel?: number;
+  rango?: number;
+  dias?: number;
+  lineas?: { clave: number; descripcion: string; naturaleza: 'P' | 'D'; importe: number }[];
+  totalPercepciones?: number;
+  totalDeducciones?: number;
+  neto?: number;
+  /** Suma de las percepciones que se capturaron en Personal, que van por mes. */
+  percepcionesPersonalMes?: number | null;
+}
+
 export interface MovimientoExterno {
   id: number;
   tipo: string;
@@ -525,6 +546,9 @@ export interface MovimientoExterno {
   efecto: string[];
   avisos: string[];
   problema: string | null;
+  ajustes: AjustesExterno | null;
+  /** La cuenta que mandó Personal, si mandó. */
+  cuentaPersonal: string | null;
   atendidoPor: string | null;
   atendidoEl: string | null;
   traidoEl: string;
